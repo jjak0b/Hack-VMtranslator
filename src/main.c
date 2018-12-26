@@ -101,11 +101,177 @@ symbol *getFromSymbolTable( list_node *l_symbol_table, char *str_label ){
 	return s_replace;
 }
 
+/**
+ * @brief : Accumula ogni carattere fino al primo "\n" e lo converte in stringa; sostituisce '\t' con ' ',  sequenze  di ' ' lasciandone solo 1; ignora tutti i caratteri dopo '\r', commenti "//"
+ * PreCondition: La lista deve essere una lista di caratteri
+ * @param input 
+ * @return list_node* : il puntatore della lista con gli elementi rimossi, altrimenti NULL se è avvenuto un errore di sintassi per i commenti (con relativo messaggio stampato) o se la lista è vuota
+ */
+list_node *set_content_to_simple_vm_format( list_node *input ){
+	list_node *tmp = input;
+	list_node *output = NULL;
+	list_node *buffer = NULL;
+	int unsigned row = 1;
+	char *str_buffer = NULL;
+	int tmp_index = -1;
+	bool b_error = false;
+	char *ptr_value = NULL;
+	while( !b_error && tmp != NULL ){
+		ptr_value = tmp->value;
+		if( *ptr_value == '\n' || tmp->next == NULL ){
+			if( tmp->next == NULL ){ // caso in cui non ci sia un carattere di nuova riga
+				buffer = push( buffer, tmp->value );
+			}
+			tmp_index = -1;
+			buffer = list_node_reverse( buffer );
+			str_buffer = list_to_string( buffer, NULL );
+			// printf( "Size:%d , str[0]=%d ,MYSTRING: %s\n", strlen( str_buffer ), str_buffer[0], str_buffer );
+			if( str_buffer[0] != '\0' ){
+				if( isSubstr( str_buffer, "//", &tmp_index ) && tmp_index >= 0 ){ // ignoro il contenuto dopo "//"
+					str_buffer[ tmp_index ] = '\0';
+					tmp_index = -1;
+				}
+
+				if( isSubstr( str_buffer, "\r", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\r" dato che sarebbe il delimitatore di riga
+					str_buffer[ tmp_index ] = '\0';
+					tmp_index = -1;
+				}
+
+				if( str_buffer[0] != '\0' ){ // se il commento era ad inizio riga, ignora totalmente quest'ultima
+					if( isSubstr( str_buffer, "/", &tmp_index ) && tmp_index >= 0 ){ // errore di sintassi per commento non valido dopo che ho ignorato i commenti validi
+						printf( "ERRORE: Sintassi commento non valida a riga: %d, carattere: %d\n\"%s\"\n", row, tmp_index, str_buffer );
+						b_error = true;
+						tmp_index = -1;
+					}
+					if( !b_error ){
+						while( isSubstr( str_buffer, "\t", &tmp_index ) && tmp_index >= 0){ // Sostituisco tutte le tabulazioni con degli spazi
+							str_buffer[ tmp_index ] = ' ';
+							tmp_index = -1;
+						}
+						while( isSubstr( str_buffer, "  ", &tmp_index ) && tmp_index >= 0 ){ // Sostituisco le doppie spaziature con una singola
+							str_buffer[ tmp_index ] = ' ';
+							tmp_index = -1;
+						}
+					}
+					#ifdef DEBUG
+					printf( "RIGA %d Elaborata: %s\n", row, str_buffer);
+					#endif
+					output = push( output, str_buffer );
+				}
+				#ifdef DEBUG
+				else{
+					printf( "RIGA %d ignorata: ", row);
+					list_node_print( "%c", buffer );
+					printf( "\n");
+				}
+				#endif
+			}
+			if( str_buffer[0] == '\0' ){
+				free( str_buffer);
+				str_buffer = NULL;
+			}
+			row +=1;
+			delete_list( buffer, false );
+			buffer = NULL;
+		}
+		else{
+			buffer = push( buffer, tmp->value );
+		}
+		tmp = tmp->next;
+	}
+
+	if( b_error ){
+		delete_list( output, true ); // libera la memoria usata
+		return NULL;
+	}
+	return list_node_reverse( output );
+}
+/**
+ * @brief Da una lista di caratteri ritorna una lista contenente stringhe costituite dalla COPIA dei caratteri della lista data
+ * PreConduition: 	La lista deve essera una lista di caratteri; per delimitare il fine stringa, si utilizza il carattere '\n' e non "\r\n", il quale non sarà aggiunto alla stringa
+ * PostCondition: 	I caratteri ' ' a inizio riga saranno ignorati
+ * @param input 
+ * @return list_node* 
+ */
+list_node *setup_list_char_to_list_str( list_node *input){
+	list_node *tmp = input;
+	list_node *buffer = NULL;
+	list_node *output = NULL;
+	while( tmp != NULL ){
+		if(*(char*)tmp->value == '\n' || tmp->next == NULL ){
+			if( tmp->next == NULL ){
+				buffer = push( buffer, tmp->value);
+			}
+			buffer = list_node_reverse( buffer );
+			output = push( output, list_to_string( buffer, NULL ) );
+		}
+		else{
+			buffer = push( buffer, tmp->value);
+		}
+		tmp = tmp->next;
+	}
+	return list_node_reverse( output );
+}
+
+/**
+ * @brief Da una lista di stringhe ritorna una lista contenente una COPIA dei suoi caratteri
+ * PreConduition: 	la lista deve essera una lista di stringhe
+ * PostCondition: 	Alla fine di ogni stringa, aggiunge la sequenza di caratteri "\r\n";
+ * 					se una stringa è vuota invece non viene aggiunta
+ * @param input 
+ * @return list_node* 
+ */
+list_node *setup_list_str_to_list_char( list_node *input){
+	list_node *tmp = input;
+	list_node *output = NULL;
+	int length_str = 0;
+	list_node *list_string = NULL;
+	char *str_tmp = NULL;
+	while( tmp != NULL ){
+		length_str = strlen( tmp->value );
+		if( length_str > 0 ){
+			str_tmp = malloc( sizeof(char) * ( length_str + 2 + 1) );
+			// aggiungo "\r\n" a fine stringa per delimitare il fine riga
+			strcpy( str_tmp, tmp->value );
+			strcat( str_tmp, "\r\n");
+			list_string = string_to_list( str_tmp );
+			// dealloco lo spazio che ho utilizzato
+			free( str_tmp );
+			str_tmp = NULL;
+			// collego la lista di caratteri alla lista di output
+			output = append( output, list_string );
+		}
+		tmp = tmp->next;
+	}
+	return output;
+}
 
 list_node *translator( list_node *input ){
+	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
 
-	list_node *output = NULL;
+	printf("Rimozioni commenti e normalizzazione del contenuto in corso...\n");
+	instructions = set_content_to_simple_vm_format( input ); // normalizza il contenuto in stringhe
+
+	#ifdef DEBUG
+	printf("\nOUTPUT:\n");
+	list_node_print( "%s\n", instructions);
+	#endif
+
+	if( instructions == NULL ){
+		return NULL;
+	}
+	
+	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
+
+	#ifdef DEBUG
+	printf("Conversione lista stringhe a lista caratteri in corso...\n");
+	printf("\n");
+	#endif
+	// TEMP: 
+	output = setup_list_str_to_list_char( instructions );
+	
+
 	return output;
 }
 
@@ -141,8 +307,8 @@ int main( int nArgs, char **args ){
 						#endif
 
 						#ifdef DEBUG
-						printf("caratteri letti: %d\n", size(  lh_input->head, true ) );
-						list_node_print( "%c", lh_input->head );
+						printf("caratteri letti: %d\n", size( input, true ) );
+						list_node_print( "%c", input );
 						printf("\n");
 						#endif
 						
@@ -150,8 +316,8 @@ int main( int nArgs, char **args ){
 						delete_list( input, true );
 						input = NULL;
 						#ifdef DEBUG
-						printf("caratteri elaborati: %d\n", size(  lh_output->head, true ) );
-						list_node_print( "%c", lh_output->head );
+						printf("caratteri elaborati: %d\n", size(  output, true ) );
+						list_node_print( "%c", output );
 						printf( "\n" );
 						#endif
 
