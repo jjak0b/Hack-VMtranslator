@@ -42,10 +42,11 @@ list_node *readFile( char *filename, list_node *l_handler ){
 				#endif				
 				ptr_char = (char*)malloc( sizeof(char) );
 				*ptr_char = c;
-				l_handler = enqueue( l_handler, ptr_char );
+				l_handler = push( l_handler, ptr_char );
 			}
         }
         fclose( fin );
+		l_handler = list_node_reverse( l_handler );
     }
     else{
         return NULL;
@@ -354,7 +355,7 @@ bool isSubstr(const char *str, const char *subStr, int *start_index) {
 	bool isSub = false;
 	// confronta ogni gruppo a length_subSt a length_subSt
 	// se la differenza è 0 allora subStr è sotto stringa di str
-	// altrimenti ricomuncia il procedimento cominciando dal carattere successivo finchè i < n + 1
+	// altrimenti ricomincia il procedimento cominciando dal carattere successivo finchè i < n + 1
 	int i = 0;
     while( i < n+1 && !isSub ) {
         if ( !strncmp(str + i, subStr, length_subStr ) ) {

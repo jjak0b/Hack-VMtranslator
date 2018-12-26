@@ -5,6 +5,17 @@
 #include "utility.h"
 
 /**
+ * @brief Indica se la lista indicata a partire da tale nodo è vuota
+ * 
+ * @param head 
+ * @return true se è vuota
+ * @return false altrimenti
+ */
+bool isEmpty( list_node *head ){
+	return head == NULL;
+}
+
+/**
  * @brief
  * PreCondition: N/A
  * PostCondition: Dato un nodo, ritorna la sua lunghezza della lista a seguire (o precedere) da tale nodo
@@ -71,7 +82,9 @@ list_node *last( list_node *head ){
 list_node *push( list_node *stack, void *value ){
 	list_node *new_head = list_node_new( value );
 	new_head->next = stack;
-	stack->prev = new_head;
+	if( stack != NULL ){
+		stack->prev = new_head;
+	}
 	return new_head;
 }
 
@@ -200,13 +213,19 @@ list_node *list_node_new( void *value ){
 	return head;
 }
 
+
 /**
- * @brief Dealloca il valore ed il nodo stesso, collegando prima tra loro il nodo successivo e precedente
+ * @brief Dealloca il valore ed il nodo specificato, ritornando il nodo successivo
+ *
+ * PostCondition: Collega prima tra loro il nodo successivo e precedente
  * 
  * @param node 
+ * @return list_node* Il puntatore al nodo successivo
  */
-void delete_node( list_node *node){
+list_node *delete_node( list_node *node){
+	list_node *node_next=NULL;
 	if( node != NULL ){
+		node_next=node->next;
 		if( node->prev != NULL ){
 			node->prev->next = node->next;
 		}
@@ -218,6 +237,8 @@ void delete_node( list_node *node){
 		free( node );
 		node = NULL;
 	}
+
+	return node_next;
 }
 
 /**
@@ -247,9 +268,15 @@ list_node *list_node_reverse( list_node *head ){
  */
 void list_node_print( const char *format, list_node *head){
 	char *ptr_char =NULL;
+	bool shouldPrintStr = isSubstr( format, "%s", NULL );
 	while( head != NULL ){
-		ptr_char = head->value;
-		printf( format, *ptr_char);
+		char *ptr_char = head->value;
+		if( shouldPrintStr ){
+			printf( format, ptr_char);
+		}
+		else{
+			printf( format, *ptr_char);
+		}
 		head = head->next;
 	}
 }

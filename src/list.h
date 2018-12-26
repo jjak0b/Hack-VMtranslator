@@ -17,6 +17,15 @@ typedef struct list_node {
 #include "utility.h"
 
 /**
+ * @brief Indica se la lista indicata a partire da tale nodo è vuota
+ * 
+ * @param head 
+ * @return true se è vuota
+ * @return false altrimenti
+ */
+bool isEmpty( list_node *head );
+
+/**
  * @brief
  * PreCondition: N/A
  * PostCondition: Dato un nodo, ritorna la sua lunghezza della lista a seguire (o precedere) da tale nodo
@@ -118,11 +127,14 @@ list_node *insert( list_node *head, list_node *node, int index );
 list_node *list_node_new( void *value );
 
 /**
- * @brief Dealloca il valore ed il nodo stesso, collegando prima tra loro il nodo successivo e precedente
+ * @brief Dealloca il valore ed il nodo specificato, ritornando il nodo successivo
+ *
+ * PostCondition: Collega prima tra loro il nodo successivo e precedente
  * 
  * @param node 
+ * @return list_node* Il puntatore al nodo successivo
  */
-void delete_node( list_node *node);
+list_node *delete_node( list_node *node);
 
 /**
  * @brief data una lista restituisce la lista invertita
