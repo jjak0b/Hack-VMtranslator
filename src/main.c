@@ -125,6 +125,7 @@ list_node *set_content_to_simple_vm_format( list_node *input ){
 			tmp_index = -1;
 			buffer = list_node_reverse( buffer );
 			str_buffer = list_to_string( buffer, NULL );
+			int length_str = strlen( str_buffer );
 			// printf( "Size:%d , str[0]=%d ,MYSTRING: %s\n", strlen( str_buffer ), str_buffer[0], str_buffer );
 			if( str_buffer[0] != '\0' ){
 				if( isSubstr( str_buffer, "//", &tmp_index ) && tmp_index >= 0 ){ // ignoro il contenuto dopo "//"
@@ -144,19 +145,40 @@ list_node *set_content_to_simple_vm_format( list_node *input ){
 						tmp_index = -1;
 					}
 					if( !b_error ){
+						int start_index = 0, end_index = 0;
 						while( isSubstr( str_buffer, "\t", &tmp_index ) && tmp_index >= 0){ // Sostituisco tutte le tabulazioni con degli spazi
 							str_buffer[ tmp_index ] = ' ';
 							tmp_index = -1;
 						}
 						while( isSubstr( str_buffer, "  ", &tmp_index ) && tmp_index >= 0 ){ // Sostituisco le doppie spaziature con una singola
-							str_buffer[ tmp_index ] = ' ';
+							strcpy( str_buffer + tmp_index + 1,  str_buffer + tmp_index + 2 );
 							tmp_index = -1;
 						}
+						// ignora gli spazi prima del contenuto significativo, e ne memorizzo l'indice di partenza della stringa
+						int length_str_tmp = getStrLimitIndexes( str_buffer, ' ', &start_index, &end_index );
+						// printf( "start valid %d \t end valid: %d\n", start_index, end_index );
+						if( length_str != length_str_tmp ){
+							// Mi creo una stringa con i caratteri essenziali, senza la parte meno significativa
+							char *str_tmp = malloc( sizeof( char ) * (length_str_tmp + 1 ) );
+							strncpy( str_tmp, str_buffer + start_index, length_str_tmp );
+							str_tmp[ length_str_tmp ] = '\0';
+							free( str_buffer );
+							str_buffer = str_tmp;
+						}
+					}
+					if( str_buffer[0] != '\0' ){
+						#ifdef DEBUG
+						printf( "RIGA %d Elaborata: \"%s\"\n", row, str_buffer);
+						#endif
+						output = push( output, str_buffer );
 					}
 					#ifdef DEBUG
-					printf( "RIGA %d Elaborata: %s\n", row, str_buffer);
+					else{
+						printf( "RIGA %d elaborata e ignorata: \"", row);
+						list_node_print( "%c", buffer );
+						printf( "\"\n" );
+					}
 					#endif
-					output = push( output, str_buffer );
 				}
 				#ifdef DEBUG
 				else{
@@ -270,7 +292,6 @@ list_node *translator( list_node *input ){
 	#endif
 	// TEMP: 
 	output = setup_list_str_to_list_char( instructions );
-	
 
 	return output;
 }
