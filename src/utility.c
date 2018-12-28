@@ -369,3 +369,94 @@ bool isSubstr(const char *str, const char *subStr, int *start_index) {
 
     return isSub;
 }
+
+/**
+ * @brief Ignora i caratteri specificati consecutivi prima e dopo il contenuto significativo; memorizza in start_index l'indice di partenza e in end_index quello di fine della stringa
+ * PreCondition: str deve essere una stringa
+ * PostCondition: memorizza in start_index l'indice di partenza e in end_index quello di fine della stringa se loro sono != NULL
+ * @param str 
+ * @param ignore_char 
+ * @return int : la lunghezza effettiva della stringa significativa
+ */
+int getStrLimitIndexes( const char *str, char ignore_char, int *start_index, int *end_index){
+	int length_str = strlen( str );
+	bool b_found_valid = false;
+	int _start_index = 0, _end_index = length_str - 1;
+	// ignora i caratteri specificati prima del contenuto significativo, e ne memorizzo l'indice di partenza della stringa
+	for( int i = 0; i < length_str && !b_found_valid; i+=1 ){
+		if( str[i] != ignore_char){
+			b_found_valid = true;
+		}
+		else{
+			_start_index += 1;
+		}
+	}
+	// ignora i caratteri specificati a partire dalla fine, e ne memorizzo l'indice della fine significativa della stringa
+	b_found_valid = false;
+	for( int i = length_str - 1; i >= _start_index && !b_found_valid; i-=1 ){
+		if( str[i] != ignore_char){
+			b_found_valid = true;
+		}
+		else{
+			_end_index -= 1;
+		}
+	}
+
+	if( start_index != NULL){
+		*start_index = _start_index;
+	}
+
+	if( end_index != NULL){
+		*end_index = _end_index;
+	}
+
+	length_str -= ( (length_str - 1 ) - _end_index);
+	length_str -= _start_index;
+
+	return length_str;
+}
+
+/**
+ * @brief restituisce una lista di sotto stringhecontenute tra un delimitatoree specificato
+ * 			esempio: strWords( "c_ia_o", "_" ) := "c" -> "ia" -> "o"
+ * PreCondition: str e str_delimitator devono essere stringhe != NULL
+ * PostCondition: I valori della lista sono allocati dinamicamente in questa funzione.
+ * 
+ * @param str 
+ * @param str_delimitator 
+ * @return list_node* la lista delle parole tra il delimitatore
+ */
+list_node *strWords( const char *str, char *str_delimitator ){
+
+	list_node *words = NULL;
+	char *str_tmp = NULL;
+	int length_str = strlen( str ), length_delim = strlen( str_delimitator );
+	int start_index = 0, tmp_index = 0, length_str_tmp = 0;
+	while( start_index < length_str && isSubstr( str + start_index, str_delimitator, &tmp_index) ){// ogni ciclo la stringa inizia dal carattere successivo del delimitatore
+		
+		// memorizzo i primi tmp_index caratteri a partire dallo start_index-esimo caratere
+		length_str_tmp = tmp_index;
+		if( length_str_tmp > 0 ){
+			str_tmp = malloc( sizeof(char) * length_str_tmp + 1);
+
+			strncpy( str_tmp, str + start_index, length_str_tmp );
+			str_tmp[ length_str_tmp ] = '\0';
+
+			words = push( words, str_tmp );
+		}
+		start_index += tmp_index + length_delim; // inizio la stringa dopo i caratteri memorizzati e dopo il delimitatore
+	}
+
+	// prendo il contenuto restante della stringa e lo considero una parola
+	length_str_tmp = length_str - start_index;
+	if( length_str_tmp > 0 ){
+		str_tmp = malloc( sizeof(char) * length_str_tmp + 1);
+
+		strncpy( str_tmp, str + start_index, length_str_tmp );
+		str_tmp[ length_str_tmp ] = '\0';
+
+		words = push( words, str_tmp );
+	}
+
+	return words;
+}

@@ -159,4 +159,25 @@ list_node *int_to_binary_list( int n, int unsigned max_bit_count );
  */
 bool isSubstr(const char *str, const char *subStr, int *start_index);
 
+/**
+ * @brief Ignora i caratteri specificati consecutivi prima e dopo il contenuto significativo; memorizza in start_index l'indice di partenza e in end_index quello di fine della stringa
+ * PreCondition: str deve essere una stringa
+ * PostCondition: memorizza in start_index l'indice di partenza e in end_index quello di fine della stringa se loro sono != NULL
+ * @param str 
+ * @param ignore_char 
+ * @return int : la lunghezza effettiva della stringa significativa
+ */
+int getStrLimitIndexes( const char *str, char ignore_char, int *start_index, int *end_index);
+
+/**
+ * @brief restituisce una lista di sotto stringhecontenute tra un delimitatoree specificato
+ * 			esempio: strWords( "c_ia_o", "_" ) := "c" -> "ia" -> "o"
+ * PreCondition: str e str_delimitator devono essere stringhe != NULL
+ * PostCondition: I valori della lista sono allocati dinamicamente in questa funzione.
+ * 
+ * @param str 
+ * @param str_delimitator 
+ * @return list_node* la lista delle parole tra il delimitatore
+ */
+list_node *strWords( const char *str, const char *str_delimitator );
 #endif
