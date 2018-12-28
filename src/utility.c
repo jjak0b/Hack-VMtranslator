@@ -426,7 +426,7 @@ int getStrLimitIndexes( const char *str, char ignore_char, int *start_index, int
  * @param str_delimitator 
  * @return list_node* la lista delle parole tra il delimitatore
  */
-list_node *strWords( const char *str, char *str_delimitator ){
+list_node *strWords( const char *str, const char *str_delimitator ){
 
 	list_node *words = NULL;
 	char *str_tmp = NULL;
@@ -458,5 +458,5 @@ list_node *strWords( const char *str, char *str_delimitator ){
 		words = push( words, str_tmp );
 	}
 
-	return words;
+	return list_node_reverse( words );
 }

@@ -180,4 +180,5 @@ int getStrLimitIndexes( const char *str, char ignore_char, int *start_index, int
  * @return list_node* la lista delle parole tra il delimitatore
  */
 list_node *strWords( const char *str, const char *str_delimitator );
+
 #endif
