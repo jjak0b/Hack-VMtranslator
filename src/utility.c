@@ -496,6 +496,12 @@ char **list_toArrayStr( list_node *input, unsigned int *size_array, bool b_copy 
 	return rows;
 }
 
+/**
+ * @brief Copia e parte significativa di str in una nuova allocazione di memoria
+ * PreCondition: str != NULL
+ * @param str 
+ * @return char* 
+ */
 char *strDuplicate( const char *str ){
 	if( str == NULL ){
 		return NULL;
