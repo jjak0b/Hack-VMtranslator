@@ -268,6 +268,215 @@ list_node *setup_list_str_to_list_char( list_node *input){
 	return output;
 }
 
+list_node *ASM_IncSP( list_node *output ){
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "M=M+1" ) );
+	return output;
+}
+
+list_node *ASM_DecSP( list_node *output ){
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "M=M-1" ) );
+	return output;
+}
+
+list_node *ASM_push( list_node *output, char *str_segment, char *index ){
+	if( !isNumber( index, true ) ){
+		return NULL;
+	}
+	int length_str_index = strlen( index );
+	char *str_tmp = NULL;
+
+	// genero l'indice della variabile
+	if( strcmp( str_segment, "static") ){ // @index
+		str_tmp = malloc( sizeof( char ) *  length_str_index + 2 );
+		strcpy( str_tmp, "@"); 
+		strncpy( str_tmp + 1, index, length_str_index );
+		str_tmp[ length_str_index] = '\0';
+		output = push( output, str_tmp ); // addr = START_SEGMENT + i
+	}
+	else{ // @static.index
+		length_str_index = (strlen( "static." ) + length_str_index );
+		str_tmp = malloc( sizeof( char ) * (length_str_index + 2) );
+		strcpy( str_tmp, "@static."); 
+		strcat( str_tmp, index );
+		output = push( output, str_tmp );
+	}
+
+	if( strcmp( str_segment, "static" ) ){
+		output = push( output, strDuplicate( "D=A" ) );
+		if( !strcmp( str_segment, "constant") ){
+			output = push( output, strDuplicate( "@0" ) );
+		}
+		else if( !strcmp( str_segment, "local") ){
+			output = push( output, strDuplicate( "@LCL" ) );
+		}
+		else if( !strcmp( str_segment, "argument") ){
+			output = push( output, strDuplicate( "@ARG" ) );
+		}
+		output = push( output, strDuplicate( "A=A+D" ) );  	// addr = START_SEGMENT + i
+	}
+
+	output = push( output, strDuplicate( "D=M" ) );		// *SP = *addr
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+
+	return ASM_IncSP( output ); // SP++
+}
+
+list_node *ASM_pop( list_node *output, char *str_segment, char *index ){
+	if( !isNumber( index, true ) ){
+		return NULL;
+	}
+	int length_str_index = strlen( index );
+	char *str_tmp = NULL;
+	// genero l'indice della variabile
+	
+	if( strcmp( str_segment, "static") ){ // @index
+		str_tmp = malloc( sizeof( char ) *  length_str_index + 2 );
+		strcpy( str_tmp, "@"); 
+		strncpy( str_tmp + 1, index, length_str_index );
+		str_tmp[ length_str_index] = '\0';
+		output = push( output, str_tmp ); // addr = START_SEGMENT + i
+	}
+	else{ // @static.index
+		length_str_index = (strlen( "static." ) + length_str_index );
+		str_tmp = malloc( sizeof( char ) * (length_str_index + 2) );
+		strcpy( str_tmp, "@static."); 
+		strcat( str_tmp, index );
+		output = push( output, str_tmp );
+	}
+
+	output = push( output, strDuplicate( "D=A" ) );
+
+	if( !strcmp( str_segment, "local" ) ){
+		output = push( output, strDuplicate( "@LCL" ) );
+	}
+	else if( !strcmp( str_segment, "argument") ){
+		output = push( output, strDuplicate( "@ARG" ) );
+	}
+
+	if( strcmp( str_segment, "static" ) ){
+		output = push( output, strDuplicate( "D=A+D" ) ); 
+	}
+	
+	
+	output = push( output, strDuplicate( "@R13" ) ); // uso R13 come variabile temporanea
+	output = push( output, strDuplicate( "M=D" ) );
+
+	output = ASM_DecSP( output ); // SP--
+
+	output = push( output, strDuplicate( "D=M" ) );// *address = *SP
+	output = push( output, strDuplicate( "@R13" ) ); 
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+
+	return output;
+}
+
+#define INDEX_INSTRUCTION_NAME 0
+#define INDEX_SEGMENT_NAME 1
+#define INDEX_SEGMENT_VARIABLE 2
+
+#define INDEX_FUNCTION_NAME 1
+#define INDEX_FUNCTION_N_ARGUMENTS 2
+#define INDEX_FUNCTION_N_LOCAL_VARIABLES INDEX_FUNCTION_N_ARGUMENTS
+
+list_node *translate( list_node *input ){
+
+	unsigned int vr_row = 1;
+	list_node *tmp = input, *output = NULL, *instruction_words = NULL;
+	int n_words = 0;
+	bool b_error = false;
+	char *str = NULL;
+	char **instruction = NULL;
+	while( !b_error && tmp != NULL ){
+		str = tmp->value;
+		instruction_words = strWords( tmp->value, " ");
+		instruction = list_toArrayStr( instruction_words, &n_words, false );
+		if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "push" ) ){ // istruzioni per accedere a memoria
+			output = ASM_push( output, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "pop" ) ){
+			output = ASM_pop( output, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "label" ) ){ // istruzioni di salto / etichette
+
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "goto" ) ){ // istruzioni di salto / etichette
+
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "if-goto" ) ){ // istruzioni di salto / etichette
+
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
+
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
+
+		}
+		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "return" ) ){
+
+		}
+		else{ // è un'operazione "primitiva"
+			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) ){
+
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "sub" ) ){
+
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){
+
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "not" ) ){
+
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "and" ) ){
+
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" ) ){
+
+			}
+			else{ // operatori matematici =<>
+				if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ){
+
+				}
+				else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) ){
+
+				}
+				else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
+
+				}
+				else{
+					printf( "ERRORE: istruzione non riconosciuta \n" );
+					b_error = true;
+				}
+			}
+		}
+
+		if( output == NULL ){
+			b_error = true;
+		}
+
+		if( b_error ){
+			printf( "Errore avvenuto durante l'elaborazione della riga %d : \"%s\"\n", vr_row, tmp->value );
+			delete_list( output, true );
+			output = NULL;
+		}
+		free( instruction );
+		instruction = NULL;
+
+		delete_list( instruction_words, true );
+		instruction_words = NULL;
+
+		tmp = tmp->next;
+		vr_row += 1;
+	}
+
+	return list_node_reverse( output );
+}
+
 list_node *translator( list_node *input ){
 	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
 
@@ -276,7 +485,7 @@ list_node *translator( list_node *input ){
 
 	#ifdef DEBUG
 	printf("\nOUTPUT:\n");
-	list_node_print( "%s\n", instructions);
+	writeFile( "tmp.asm", setup_list_str_to_list_char( instructions ));
 	#endif
 
 	if( instructions == NULL ){
@@ -285,13 +494,18 @@ list_node *translator( list_node *input ){
 	
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
-
+	tmp = translate( instructions );
+	delete_list( instructions, true );
+	instructions = NULL;
+	
 	#ifdef DEBUG
 	printf("Conversione lista stringhe a lista caratteri in corso...\n");
 	printf("\n");
 	#endif
-	// TEMP: 
-	output = setup_list_str_to_list_char( instructions );
+
+	output = setup_list_str_to_list_char( tmp );
+	delete_list( tmp, true );
+	tmp = NULL;
 
 	return output;
 }
