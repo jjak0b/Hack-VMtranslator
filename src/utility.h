@@ -181,4 +181,19 @@ int getStrLimitIndexes( const char *str, char ignore_char, int *start_index, int
  */
 list_node *strWords( const char *str, const char *str_delimitator );
 
+/**
+ * @brief 	Restituisce gli elementi della lista come array di puntatori,
+ * PreCondition: 	Input deve essere una lista di stringhe; se non si vuoloe ottenere la dimensione dell'array size_array deve essre = NULL
+ * PostCondition: 	Se b_copy = true i puntatori dell'array puntano alle COPIE degli elementi puntati dai nodi;
+ * 					altrimenti puntano durettamente ai valori puntati dai nodi
+ *					Se size_array != NULL allora *size_array = size( input, true )
+ * @param input : lista di stringhe
+ * @param size_array : puntatore alla dimensione dell'array
+ * @param b_copy : indica se effettuare o meno la copia dei valori ei nodi della lista
+ * @return char** 
+ */
+char **list_toArrayStr( list_node *input, unsigned int *size_array, bool b_copy );
+
+char *strDuplicate( const char *str );
+
 #endif

@@ -460,3 +460,49 @@ list_node *strWords( const char *str, const char *str_delimitator ){
 
 	return list_node_reverse( words );
 }
+
+/**
+ * @brief 	Restituisce gli elementi della lista come array di puntatori,
+ * PreCondition: 	Input deve essere una lista di stringhe; se non si vuoloe ottenere la dimensione dell'array size_array deve essre = NULL
+ * PostCondition: 	Se b_copy = true i puntatori dell'array puntano alle COPIE degli elementi puntati dai nodi;
+ * 					altrimenti puntano durettamente ai valori puntati dai nodi
+ *					Se size_array != NULL allora *size_array = size( input, true )
+ * @param input : lista di stringhe
+ * @param size_array : puntatore alla dimensione dell'array
+ * @param b_copy : indica se effettuare o meno la copia dei valori ei nodi della lista
+ * @return char** 
+ */
+char **list_toArrayStr( list_node *input, unsigned int *size_array, bool b_copy ){
+	list_node *tmp = input;
+	int size_list = size( tmp, true ), length_str = 0;
+	char **rows = malloc( sizeof( char* ) * size_list ); // Array di puntatori
+	for( int i = 0; i < size_list; i += 1 ){
+		length_str = strlen( tmp->value );
+		if( b_copy ){
+			rows[i] = malloc( sizeof( char ) * (length_str + 1 ) );
+			strncpy( rows[i], tmp->value, length_str );
+			rows[length_str] = '\0';
+		}
+		else{
+			rows[ i ] = tmp->value;
+		}
+		tmp = tmp->next;
+	}
+
+	if( size_array != NULL ){
+		*size_array = size_list;
+	}
+
+	return rows;
+}
+
+char *strDuplicate( const char *str ){
+	if( str == NULL ){
+		return NULL;
+	}
+	int length = strlen( str );
+	char *new_str = malloc( sizeof( char ) * length + 1 );
+	strcpy( new_str, str );
+	new_str[ length ] = '\0';
+	return new_str;
+}
