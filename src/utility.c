@@ -512,3 +512,35 @@ char *strDuplicate( const char *str ){
 	new_str[ length ] = '\0';
 	return new_str;
 }
+
+/**
+ * @brief Istanzia una nuova stringa con il nome del file a partire dal percorso dato
+ * PostCondition: il valore restituito è una nuova stringa istanziata
+ * @param filePath percorso file da cui recuperare il nome del file
+ * @return char* puntatore alla nuova stringa istanziata
+ */
+char* getFileNameFromPath( char *filePath, bool b_getExtension){
+	if( filePath == NULL ){
+		return NULL;
+	}
+	int length = strlen( filePath );
+	bool b_found = false;
+	char *str_fileName = NULL;
+	for( int i = length - 1; i >= 0 && !b_found; i-=1 ){
+		if( filePath[i] == '\\' ){
+			str_fileName = strDuplicate( filePath + i + 1 );
+			b_found = true;
+		}
+	}
+	if( !b_getExtension ){
+		b_found = false;
+		length = strlen( str_fileName );
+		for( int i = length- 1; i >= 0 && !b_found; i-=1 ){
+			if( str_fileName[i] == '.' ){
+				str_fileName[i] = '\0';
+				b_found = true;
+			}
+		}	
+	}
+	return str_fileName;
+}

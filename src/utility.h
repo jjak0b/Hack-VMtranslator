@@ -202,4 +202,12 @@ char **list_toArrayStr( list_node *input, unsigned int *size_array, bool b_copy 
  */
 char *strDuplicate( const char *str );
 
+/**
+ * @brief Istanzia una nuova stringa con il nome del file a partire dal percorso dato
+ * PostCondition: il valore restituito è una nuova stringa istanziata
+ * @param filePath percorso file da cui recuperare il nome del file
+ * @return char* puntatore alla nuova stringa istanziata
+ */
+
+char* getFileNameFromPath( char *filePath, bool b_getExtension);
 #endif
