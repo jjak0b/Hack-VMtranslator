@@ -280,7 +280,7 @@ list_node *ASM_DecSP( list_node *output ){
 	return output;
 }
 
-list_node *ASM_push( list_node *output, char *str_segment, char *index ){
+list_node *ASM_push( list_node *output, char* filename, char *str_segment, char *index ){
 	if( !isNumber( index, true ) ){
 		return NULL;
 	}
@@ -290,15 +290,16 @@ list_node *ASM_push( list_node *output, char *str_segment, char *index ){
 	// genero l'indice della variabile
 	if( strcmp( str_segment, "static") ){ // @index
 		str_tmp = malloc( sizeof( char ) *  length_str_index + 2 );
-		strcpy( str_tmp, "@"); 
-		strncpy( str_tmp + 1, index, length_str_index );
-		str_tmp[ length_str_index] = '\0';
+		strcpy( str_tmp, "@");
+		strcat( str_tmp, index );
 		output = push( output, str_tmp ); // addr = START_SEGMENT + i
 	}
-	else{ // @static.index
-		length_str_index = (strlen( "static." ) + length_str_index );
-		str_tmp = malloc( sizeof( char ) * (length_str_index + 2) );
-		strcpy( str_tmp, "@static."); 
+	else{ // @filename.index
+		length_str_index = (strlen( filename ) + 2 + length_str_index );
+		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
+		strcpy( str_tmp, "@");
+		strcat( str_tmp, filename );
+		strcat( str_tmp, ".");
 		strcat( str_tmp, index );
 		output = push( output, str_tmp );
 	}
@@ -325,7 +326,7 @@ list_node *ASM_push( list_node *output, char *str_segment, char *index ){
 	return ASM_IncSP( output ); // SP++
 }
 
-list_node *ASM_pop( list_node *output, char *str_segment, char *index ){
+list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *index ){
 	if( !isNumber( index, true ) ){
 		return NULL;
 	}
@@ -340,10 +341,12 @@ list_node *ASM_pop( list_node *output, char *str_segment, char *index ){
 		str_tmp[ length_str_index] = '\0';
 		output = push( output, str_tmp ); // addr = START_SEGMENT + i
 	}
-	else{ // @static.index
-		length_str_index = (strlen( "static." ) + length_str_index );
-		str_tmp = malloc( sizeof( char ) * (length_str_index + 2) );
-		strcpy( str_tmp, "@static."); 
+	else{ // @filename.index
+		length_str_index = (strlen( filename ) + 2 + length_str_index );
+		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
+		strcpy( str_tmp, "@");
+		strcat( str_tmp, filename );
+		strcat( str_tmp, ".");
 		strcat( str_tmp, index );
 		output = push( output, str_tmp );
 	}
@@ -383,7 +386,7 @@ list_node *ASM_pop( list_node *output, char *str_segment, char *index ){
 #define INDEX_FUNCTION_N_ARGUMENTS 2
 #define INDEX_FUNCTION_N_LOCAL_VARIABLES INDEX_FUNCTION_N_ARGUMENTS
 
-list_node *translate( list_node *input ){
+list_node *translate( list_node *input,char *filename ){
 
 	unsigned int vr_row = 1;
 	list_node *tmp = input, *output = NULL, *instruction_words = NULL;
@@ -396,10 +399,10 @@ list_node *translate( list_node *input ){
 		instruction_words = strWords( tmp->value, " ");
 		instruction = list_toArrayStr( instruction_words, &n_words, false );
 		if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "push" ) ){ // istruzioni per accedere a memoria
-			output = ASM_push( output, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+			output = ASM_push( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "pop" ) ){
-			output = ASM_pop( output, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+			output = ASM_pop( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "label" ) ){ // istruzioni di salto / etichette
 
@@ -477,9 +480,10 @@ list_node *translate( list_node *input ){
 	return list_node_reverse( output );
 }
 
-list_node *translator( list_node *input ){
+list_node *translator( list_node *input, char *filePathname ){
 	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
-
+	char *filename = getFileNameFromPath( filePathname, false );
+	printf( "FILENAME: '%s'\n", filename );
 	printf("Rimozioni commenti e normalizzazione del contenuto in corso...\n");
 	instructions = set_content_to_simple_vm_format( input ); // normalizza il contenuto in stringhe
 
@@ -494,7 +498,7 @@ list_node *translator( list_node *input ){
 	
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
-	tmp = translate( instructions );
+	tmp = translate( instructions, filename );
 	delete_list( instructions, true );
 	instructions = NULL;
 	
@@ -547,7 +551,7 @@ int main( int nArgs, char **args ){
 						printf("\n");
 						#endif
 						
-						output = translator( input ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+						output = translator( input, filename ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
 						delete_list( input, true );
 						input = NULL;
 						#ifdef DEBUG
