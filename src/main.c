@@ -280,6 +280,25 @@ list_node *ASM_DecSP( list_node *output ){
 	return output;
 }
 
+list_node *ASM_declareLabel( list_node* output, char *str_label ){
+	int length_label = strlen( str_label );
+	char *str_tmp = malloc( sizeof(str_label) * ( length_label ) + 3 );
+	strcpy( str_tmp, "(");
+	strcat( str_tmp, str_label );
+	strcat( str_tmp, ")");
+	output = push( output, str_tmp );
+	return output;
+}
+
+list_node *ASM_atLabel( list_node *output, char *str_label ){
+	int length_label = strlen( str_label );
+	char *str_tmp = malloc( sizeof(char) * (length_label + 2 ) );
+	strcpy( str_tmp, "@");
+	strcat( str_tmp, str_label );
+	output = push( output, str_tmp );
+	return output;
+}
+
 list_node *ASM_push( list_node *output, char* filename, char *str_segment, char *index ){
 	if( !isNumber( index, true ) ){
 		return NULL;
@@ -289,19 +308,17 @@ list_node *ASM_push( list_node *output, char* filename, char *str_segment, char 
 
 	// genero l'indice della variabile
 	if( strcmp( str_segment, "static") ){ // @index
-		str_tmp = malloc( sizeof( char ) *  length_str_index + 2 );
-		strcpy( str_tmp, "@");
-		strcat( str_tmp, index );
-		output = push( output, str_tmp ); // addr = START_SEGMENT + i
+		// addr = START_SEGMENT + i
+		output = ASM_atLabel(output, index);
 	}
 	else{ // @filename.index
-		length_str_index = (strlen( filename ) + 2 + length_str_index );
+		length_str_index = (strlen( filename ) + 1 + length_str_index );
 		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
-		strcpy( str_tmp, "@");
-		strcat( str_tmp, filename );
+		strcpy( str_tmp, filename );
 		strcat( str_tmp, ".");
 		strcat( str_tmp, index );
-		output = push( output, str_tmp );
+		output = ASM_atLabel( output, str_tmp );
+		free( str_tmp );
 	}
 
 	if( strcmp( str_segment, "static" ) ){
@@ -335,20 +352,17 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	// genero l'indice della variabile
 	
 	if( strcmp( str_segment, "static") ){ // @index
-		str_tmp = malloc( sizeof( char ) *  length_str_index + 2 );
-		strcpy( str_tmp, "@"); 
-		strncpy( str_tmp + 1, index, length_str_index );
-		str_tmp[ length_str_index] = '\0';
-		output = push( output, str_tmp ); // addr = START_SEGMENT + i
+		// addr = START_SEGMENT + i
+		output = ASM_atLabel(output, index);
 	}
 	else{ // @filename.index
-		length_str_index = (strlen( filename ) + 2 + length_str_index );
+		length_str_index = (strlen( filename ) + 1 + length_str_index );
 		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
-		strcpy( str_tmp, "@");
-		strcat( str_tmp, filename );
+		strcpy( str_tmp, filename );
 		strcat( str_tmp, ".");
 		strcat( str_tmp, index );
-		output = push( output, str_tmp );
+		output = ASM_atLabel( output, str_tmp );
+		free( str_tmp );
 	}
 
 	output = push( output, strDuplicate( "D=A" ) );
@@ -364,7 +378,6 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 		output = push( output, strDuplicate( "D=A+D" ) ); 
 	}
 	
-	
 	output = push( output, strDuplicate( "@R13" ) ); // uso R13 come variabile temporanea
 	output = push( output, strDuplicate( "M=D" ) );
 
@@ -375,6 +388,87 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	output = push( output, strDuplicate( "A=M" ) );
 	output = push( output, strDuplicate( "M=D" ) );
 
+	return output;
+}
+
+list_node *ASM_label( list_node *output, char* str_filename, char *str_label ){
+	char *str_tmp = NULL;
+	int length_fileName = strlen( str_filename );
+	int length_label = strlen( str_label );
+	str_tmp = malloc( sizeof( char ) * ( length_fileName + length_label + 2 ) );
+
+	strcpy( str_tmp, str_filename );
+	strcat( str_tmp, ".");
+	strcat( str_tmp, str_label );
+	output = ASM_declareLabel( output, str_tmp );
+	free( str_tmp );
+	return output;
+}
+
+list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, bool b_isConditional){
+	int length_filename = strlen( str_filename );
+	int length_label = strlen( str_label );
+	char *str_tmp = malloc( sizeof(char) * ( length_filename + length_label + 2 ) );
+	strcpy( str_tmp, str_filename );
+	strcat( str_tmp, ".");
+	strcat( str_tmp, str_label );
+	output = ASM_atLabel( output, str_tmp );
+	free( str_tmp );
+	if( b_isConditional ){
+		output = push( output, strDuplicate("D;JNE"));
+	}
+	else{
+		output = push( output, strDuplicate("0;JMP"));
+	}
+
+	return output;
+}
+
+#define ASM_goto( output, str_filename, str_label) ( ASM_ifgoto( (output), (str_filename), (str_label), (false) ) );
+
+list_node *ASM_function( list_node *output, char *str_filename, char *str_functionName, char *str_n_local_vars ){
+	char *str_tmp = NULL;
+	char str_init_loop[] = "_INIT_LOCALS";
+	char str_init_loop_end[] = "_END";
+	int n_local_vars = atoi( str_n_local_vars );
+	int length_functionName = strlen( str_functionName );
+	output = ASM_declareLabel( output, str_functionName);
+
+	// INIZIALIZZO LOCALI
+	int length_n_local_vars = strlen( str_n_local_vars );
+	str_tmp = malloc( sizeof(char) * ( length_n_local_vars + 3 ) );
+	strcpy( str_tmp, "D=");
+	strcat( str_tmp, str_n_local_vars );
+	output = push( output, str_tmp);
+
+	int length_init_loop = length_functionName + length_init_loop + strlen( str_init_loop );
+	str_tmp = malloc( sizeof(char) * ( length_init_loop + 1) );
+	strcpy( str_tmp, str_functionName );
+	strcat( str_tmp, str_init_loop );
+	char *str_label_init_loop = str_tmp;
+
+	int length_init_loop_end = length_init_loop + strlen( str_init_loop_end );
+	str_tmp = malloc( sizeof(char) * ( length_init_loop_end + 1 ) );
+	strcpy( str_tmp, str_label_init_loop );
+	strcat( str_tmp, str_init_loop_end );
+	char *str_label_init_loop_end = str_tmp;
+
+	output = ASM_declareLabel( output, str_label_init_loop );
+	output = ASM_atLabel( output, str_label_init_loop_end );
+	output = push( output, strDuplicate( "D;JLE") );
+	// push 0
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=0") );
+	output = ASM_IncSP( output );
+
+	output = push( output, strDuplicate( "D=D-1") );
+	output = ASM_atLabel( output, str_label_init_loop);
+	output = push( output, strDuplicate( "0;JMP") );
+	output = ASM_declareLabel( output, str_label_init_loop_end);
+
+	free( str_label_init_loop );
+	free( str_label_init_loop_end );
 	return output;
 }
 
@@ -405,16 +499,16 @@ list_node *translate( list_node *input,char *filename ){
 			output = ASM_pop( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "label" ) ){ // istruzioni di salto / etichette
-
+			output = ASM_label( output, filename, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "goto" ) ){ // istruzioni di salto / etichette
-
+			output = ASM_goto( output, filename, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "if-goto" ) ){ // istruzioni di salto / etichette
-
+			output = ASM_ifgoto( output, filename, instruction[ INDEX_SEGMENT_NAME ], true);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
-
+			output = ASM_function( output, filename, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
 
