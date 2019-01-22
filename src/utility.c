@@ -527,11 +527,15 @@ char* getFileNameFromPath( char *filePath, bool b_getExtension){
 	bool b_found = false;
 	char *str_fileName = NULL;
 	for( int i = length - 1; i >= 0 && !b_found; i-=1 ){
-		if( filePath[i] == '\\' ){
+		if( filePath[i] == FILE_PATH_SEPARATOR ){
 			str_fileName = strDuplicate( filePath + i + 1 );
 			b_found = true;
 		}
 	}
+	if( !b_found ){
+		str_fileName = strDuplicate( filePath );
+	}
+
 	if( !b_getExtension ){
 		b_found = false;
 		length = strlen( str_fileName );

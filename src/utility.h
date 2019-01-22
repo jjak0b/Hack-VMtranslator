@@ -13,6 +13,9 @@ typedef unsigned short int bool;
 #define true 1
 #define false 0
 
+// ATTENZIONE SEPARATORE DIRECTORY PER CYGWIN
+#define FILE_PATH_SEPARATOR '/' // sostituire con "\\" se il programma viene eseguito su windows
+
 #include "list.h"
 
 
