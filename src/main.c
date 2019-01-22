@@ -426,7 +426,7 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
 
 #define ASM_goto( output, str_filename, str_label) ( ASM_ifgoto( (output), (str_filename), (str_label), (false) ) );
 
-list_node *ASM_function( list_node *output, char *str_filename, char *str_functionName, char *str_n_local_vars ){
+list_node *ASM_function_declare( list_node *output, char *str_filename, char *str_functionName, char *str_n_local_vars ){
 	char *str_tmp = NULL;
 	char str_init_loop[] = "_INIT_LOCALS";
 	char str_init_loop_end[] = "_END";
@@ -472,6 +472,171 @@ list_node *ASM_function( list_node *output, char *str_filename, char *str_functi
 	return output;
 }
 
+list_node *ASM_function_call( list_node *output, char *str_filename, unsigned int n_vr_row, char *str_functionName, char *str_n_args ){
+	char *str_tmp = NULL;
+	int length_functionName = strlen( str_functionName );
+	int n_args = atoi( str_n_args );
+	char *str_returnLabelRow = int_to_string( n_vr_row + 1 );
+	int length_returnLabelRow = strlen( str_returnLabelRow );
+	char *str_returnLabel = malloc( sizeof(char) * ( length_functionName + length_returnLabelRow + 9 ) );
+	strcpy( str_returnLabel, str_filename );
+	strcat( str_returnLabel, ".return.");
+	strcat( str_returnLabel, str_returnLabelRow );
+
+	// salvo Indirizzo ritorno
+	output = ASM_atLabel( output, str_returnLabel ); // @SimpleFunction.text.return.RETURNROW
+	output = push( output, strDuplicate( "D=A") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=D") );
+	output = ASM_IncSP( output );// //Incremento SP
+
+	// Salvo LCL
+	output = push( output, strDuplicate( "@LCL") );
+	output = push( output, strDuplicate( "D=M") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=D") );
+
+	//Incremento SP
+	output = ASM_IncSP( output );// //Incremento SP
+
+	//Salvo ARG
+	output = push( output, strDuplicate( "@ARG") );
+	output = push( output, strDuplicate( "D=M") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=D") );
+
+	//Incremento SP
+	output = ASM_IncSP( output );// //Incremento SP
+
+	//Salvo THIS
+	output = push( output, strDuplicate( "@THIS") );
+	output = push( output, strDuplicate( "D=M") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=D") );
+
+	//Incremento SP
+	output = ASM_IncSP( output );// //Incremento SP
+
+	//Salvo THAT
+	output = push( output, strDuplicate( "@THAT") );
+	output = push( output, strDuplicate( "D=M") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "A=M") );
+	output = push( output, strDuplicate( "M=D") );
+
+	//Incremento SP
+	output = ASM_IncSP( output );// //Incremento SP
+
+	// setto ARG (D=SP-(n+5))
+	output = ASM_atLabel(output, str_n_args ); // NUMERO ARGOMENTI ( ASSEGNATO DA TRADUTTORE)
+	output = push( output, strDuplicate( "D=A") );
+	output = push( output, strDuplicate( "@5") );
+	output = push( output, strDuplicate( "D=D+A") );
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "D=M-D") );
+	output = push( output, strDuplicate( "@ARG") );
+	output = push( output, strDuplicate( "M=D") );
+
+	// setto LCL
+	output = push( output, strDuplicate( "@SP") );
+	output = push( output, strDuplicate( "D=M") );
+	output = push( output, strDuplicate( "@LCL") );
+	output = push( output, strDuplicate( "M=D") );
+
+	// PASSO CONTROLLO
+	output = ASM_atLabel(output, str_functionName );
+	output = push( output, strDuplicate( "0;JMP") );
+
+	// dichiaro indirizzo ritorno
+	output = ASM_declareLabel( output, str_returnLabel );
+	return output;
+}
+
+list_node *ASM_function_return( list_node *output ){
+	// Inzializzo variabile temporanea FRAME
+	output = push( output, strDuplicate( "@LCL"));
+	output = push( output, strDuplicate( "D=A"));
+	output = push( output, strDuplicate( "@R13"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// Mi salvo l'indirizzo di ritorno
+	output = push( output, strDuplicate( "@R13")); 	// FRAME-5
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@5"));
+	output = push( output, strDuplicate( "D=D-A"));
+	output = push( output, strDuplicate( "A=D"));	// RET = *(FRAME-5)
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@R14"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// POP D
+	output = push( output, strDuplicate( "@SP"));
+	output = push( output, strDuplicate( "AM=M-1")); // CONTROLLARE
+	output = push( output, strDuplicate( "D=M"));
+
+	// *ARG
+	output = push( output, strDuplicate( "@ARG"));
+	output = push( output, strDuplicate( "A=M"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// ripristino SP caller
+	output = push( output, strDuplicate( "@ARG"));
+	output = push( output, strDuplicate( "D=A+1"));
+	output = push( output, strDuplicate( "@SP"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// ripristino THAT caller
+	output = push( output, strDuplicate( "@R13")); 	// FRAME-1
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@1"));
+	output = push( output, strDuplicate( "D=D-A"));
+	output = push( output, strDuplicate( "A=D")); 	// THAT = *(FRAME-1)
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@THAT"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// ripristino THIS caller
+	output = push( output, strDuplicate( "@R13")); 	// FRAME-2
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@2"));
+	output = push( output, strDuplicate( "D=D-A"));
+	output = push( output, strDuplicate( "A=D")); 	// THIS = *(FRAME-2)
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@THIS"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// ripristino ARG caller
+	output = push( output, strDuplicate( "@R13")); 	// FRAME-3
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@3"));
+	output = push( output, strDuplicate( "D=D-A"));
+	output = push( output, strDuplicate( "A=D")); 	// ARG = *(FRAME-3)
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@ARG"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// ripristino LCL caller
+	output = push( output, strDuplicate( "@R13")); 	// FRAME-4
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@4"));
+	output = push( output, strDuplicate( "D=D-A"));
+	output = push( output, strDuplicate( "A=D")); 	// LCL = *(FRAME-4)
+	output = push( output, strDuplicate( "D=M"));
+	output = push( output, strDuplicate( "@LCL"));
+	output = push( output, strDuplicate( "M=D"));
+
+	// goto RET
+	output = push( output, strDuplicate( "@R14"));
+	output = push( output, strDuplicate( "A=M"));
+	output = push( output, strDuplicate( "0;JMP"));
+
+	return output;
+}
+
 #define INDEX_INSTRUCTION_NAME 0
 #define INDEX_SEGMENT_NAME 1
 #define INDEX_SEGMENT_VARIABLE 2
@@ -508,13 +673,13 @@ list_node *translate( list_node *input,char *filename ){
 			output = ASM_ifgoto( output, filename, instruction[ INDEX_SEGMENT_NAME ], true);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
-			output = ASM_function( output, filename, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
+			output = ASM_function_declare( output, filename, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
-
+			output = ASM_function_call( output, filename, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_ARGUMENTS ]);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "return" ) ){
-
+			output = ASM_function_return( output );
 		}
 		else{ // è un'operazione "primitiva"
 			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) ){
