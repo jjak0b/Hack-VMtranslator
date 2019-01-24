@@ -213,4 +213,22 @@ char *strDuplicate( const char *str );
  */
 
 char* getFileNameFromPath( char *filePath, bool b_getExtension);
+
+/**
+ * @brief restituisce il puntatore ad una striga istanziata, contenente le lettere maiuscole di tutte le lettere contenute nella stringa data
+ * PreCondition: str deve essere una stringa
+ * PostCondition: alloca in memoria una nuova stringa
+ * @param str 
+ * @return char* 
+ */
+char *strToUpperCase( char *str );
+
+/**
+ * @brief restituisce il puntatore ad una striga istanziata, contenente le lettere minuscole di tutte le lettere contenute nella stringa data
+ * PreCondition: str deve essere una stringa
+ * PostCondition: alloca in memoria una nuova stringa
+ * @param str 
+ * @return char* 
+ */
+char *strToLowerCase( char *str  );
 #endif
