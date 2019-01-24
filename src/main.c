@@ -137,6 +137,10 @@ list_node *set_content_to_simple_vm_format( list_node *input ){
 					str_buffer[ tmp_index ] = '\0';
 					tmp_index = -1;
 				}
+				else if( isSubstr( str_buffer, "\n", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\n" ( se non era presente prima "\r") dato che sarebbe il delimitatore di riga
+					str_buffer[ tmp_index ] = '\0';
+					tmp_index = -1;
+				}
 
 				if( str_buffer[0] != '\0' ){ // se il commento era ad inizio riga, ignora totalmente quest'ultima
 					if( isSubstr( str_buffer, "/", &tmp_index ) && tmp_index >= 0 ){ // errore di sintassi per commento non valido dopo che ho ignorato i commenti validi
@@ -266,6 +270,13 @@ list_node *setup_list_str_to_list_char( list_node *input){
 		tmp = tmp->next;
 	}
 	return output;
+}
+
+list_node *ASM_InitSP(list_node *output ){
+	output = push( output, strDuplicate( "@256" ) );
+	output = push( output, strDuplicate( "D=A" ) );
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "M=D" ) );
 }
 
 list_node *ASM_IncSP( list_node *output ){
@@ -637,6 +648,157 @@ list_node *ASM_function_return( list_node *output ){
 	return output;
 }
 
+list_node *ASM_add( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "D=M" ) );// add
+
+	// decremento SP e lo punto ( consumo secondo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	// push del risultato
+	output = push( output, strDuplicate( "M=D+M" ) );
+	return output;
+}
+
+list_node *ASM_sub( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "D=-M" ) ); // sub
+
+	// decremento SP e lo punto ( consumo secondo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	// push del risultato
+	output = push( output, strDuplicate( "M=D+M" ) );
+	return output;
+}
+
+list_node *ASM_neg( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "M=-M ") ); // neg
+
+	return output;
+}
+
+list_node *ASM_not( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "M=!M ") ); // not
+
+	return output;
+}
+
+list_node *ASM_and( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "D=M" ) );
+
+	// decremento SP e lo punto ( consumo secondo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	// push del risultato
+	output = push( output, strDuplicate( "M=D&M" ) ); // and bitwise
+	return output;
+}
+
+list_node *ASM_or( list_node *output ){
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "D=M" ) );
+
+	// decremento SP e lo punto ( consumo secondo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	// push del risultato
+	output = push( output, strDuplicate( "M=D|M" ) ); // or bitwise
+	return output;
+}
+
+/**
+ * @brief Converte le istruzioni lt, gt, eq in istruzioni assembler hack
+ * PreCondition: str_instruction deve essere una stringa e deve avere solamente uno tra i seguenti valori: ("lt", "gt", "eq") ( se nella VM sarebbero aggiunti anche "le", "ge", "ne" questa funzione li supporterà)
+ * PostCondition: Aggiunge alla lista le istruzioni ASM come stringhe necessarie per l'istruzione
+ * @param output 
+ * @param str_instruction := tipo di istruzioe di contronto valori in vm
+ * @param str_filename := nome del file in cui viene chiamata l'istruzione
+ * @param n_vr_row := riga del file .vm in cui è presente tale istruzione
+ * @return list_node* 
+ */
+list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_filename, unsigned int n_vr_row ){
+	// x < y --> x-y < 0
+	// inizializzazione delle stringhe usate come label
+	int length_filename = strlen( str_filename );
+	char *str_row = int_to_string( n_vr_row );
+	int length_row = strlen( str_row );
+	char str_LABEL_PREFIX[] = "CASE_TRUE_";
+	int lenght_LABEL_PREFIX = strlen( str_LABEL_PREFIX );
+	int length_LABEL_CASE = lenght_LABEL_PREFIX + length_filename + length_row + 1;
+	char *str_LABEL_CASE = malloc( sizeof(char) * (length_LABEL_CASE + 1 ) );
+	strcpy( str_LABEL_CASE, str_LABEL_PREFIX );
+	strcat( str_LABEL_CASE, str_filename );
+	strcat( str_LABEL_CASE, "_");
+	strcat( str_LABEL_CASE, str_row );
+	int length_LABEL_CASE_END = length_LABEL_CASE + 4;
+	char *str_LABEL_CASE_END = malloc( sizeof(char) * ( length_LABEL_CASE_END + 1) );
+	strcpy( str_LABEL_CASE_END, str_LABEL_CASE );
+	strcat( str_LABEL_CASE_END, "_END");
+	char *str_ASM_jump = malloc( sizeof(char) * 6 );
+	char *str_instruction_Upper = strToUpperCase( str_instruction );
+	strcpy( str_ASM_jump, "D;J");
+	strcat( str_ASM_jump, str_instruction_Upper );
+
+	// decremento SP e lo punto ( consumo primo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	output = push( output, strDuplicate( "D=-M" ) ); // sub
+
+	// decremento SP e lo punto ( consumo secondo operando )
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
+
+	// salvo risultato in registro D
+	output = push( output, strDuplicate( "D=D+M" ) );
+
+	// condizioni necessarie per verificare la validità dell'istruzione
+	output = ASM_atLabel( output, str_LABEL_CASE );
+	output = push( output, str_ASM_jump ); // output = push( output, strDuplicate( "D;JLT" ) );
+	output = push( output, strDuplicate( "D=0" ) ); // ELSE
+	output = ASM_atLabel( output, str_LABEL_CASE_END );
+	output = push( output, strDuplicate( "0;JMP" ) );
+	output = ASM_declareLabel( output, str_LABEL_CASE ); // IF
+	output = push( output, strDuplicate( "D=-1" ) );
+	output = ASM_declareLabel( output, str_LABEL_CASE_END );
+	// push true (-1) o false (0) sullo stack
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	output = ASM_IncSP( output );
+
+
+	free( str_LABEL_CASE );
+	free( str_LABEL_CASE_END );
+	return output;
+}
+
 #define INDEX_INSTRUCTION_NAME 0
 #define INDEX_SEGMENT_NAME 1
 #define INDEX_SEGMENT_VARIABLE 2
@@ -645,7 +807,7 @@ list_node *ASM_function_return( list_node *output ){
 #define INDEX_FUNCTION_N_ARGUMENTS 2
 #define INDEX_FUNCTION_N_LOCAL_VARIABLES INDEX_FUNCTION_N_ARGUMENTS
 
-list_node *translate( list_node *input,char *filename ){
+list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 
 	unsigned int vr_row = 1;
 	list_node *tmp = input, *output = NULL, *instruction_words = NULL;
@@ -653,9 +815,24 @@ list_node *translate( list_node *input,char *filename ){
 	bool b_error = false;
 	char *str = NULL;
 	char **instruction = NULL;
+
+	if( b_bootstrap ){
+		#ifdef DEBUG
+		output = push(output, strDuplicate("// bootstrap") );
+		#endif
+		output = ASM_InitSP( output );
+	}
+
 	while( !b_error && tmp != NULL ){
 		str = tmp->value;
-		instruction_words = strWords( tmp->value, " ");
+		#ifdef DEBUG
+		// aggiungo la relativa istruzione VMHack come commento
+		char *str_debug = malloc( sizeof(char) * ( strlen( str ) + 4 ) );
+		strcpy( str_debug, "// ");
+		strcat( str_debug, str );
+		output = push( output, str_debug );
+		#endif
+		instruction_words = strWords( str, " ");
 		instruction = list_toArrayStr( instruction_words, &n_words, false );
 		if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "push" ) ){ // istruzioni per accedere a memoria
 			output = ASM_push( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
@@ -683,35 +860,31 @@ list_node *translate( list_node *input,char *filename ){
 		}
 		else{ // è un'operazione "primitiva"
 			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) ){
-
+				output = ASM_add( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "sub" ) ){
-
+				output = ASM_sub( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){
-
+				output = ASM_neg( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "not" ) ){
-
+				output = ASM_not( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "and" ) ){
-
+				output = ASM_and( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" ) ){
-
+				output = ASM_or( output );
 			}
 			else{ // operatori matematici =<>
-				if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ){
-
-				}
-				else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) ){
-
-				}
-				else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
-
+				if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
+					!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) || 
+					!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
+					output = ASM_cmp2val( output, instruction[ INDEX_INSTRUCTION_NAME ], filename, vr_row );
 				}
 				else{
-					printf( "ERRORE: istruzione non riconosciuta \n" );
+					printf( "ERRORE: istruzione \"%s\" non riconosciuta o supportata \n", instruction[ INDEX_INSTRUCTION_NAME ] );
 					b_error = true;
 				}
 			}
@@ -739,7 +912,7 @@ list_node *translate( list_node *input,char *filename ){
 	return list_node_reverse( output );
 }
 
-list_node *translator( list_node *input, char *filePathname ){
+list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
 	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
 	char *filename = getFileNameFromPath( filePathname, false );
 	printf( "FILENAME: '%s'\n", filename );
@@ -757,7 +930,7 @@ list_node *translator( list_node *input, char *filePathname ){
 	
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
-	tmp = translate( instructions, filename );
+	tmp = translate( instructions, filename, b_bootstrap );
 	delete_list( instructions, true );
 	instructions = NULL;
 	
@@ -810,7 +983,7 @@ int main( int nArgs, char **args ){
 						printf("\n");
 						#endif
 						
-						output = translator( input, filename ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+						output = translator( input, filename, true ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
 						delete_list( input, true );
 						input = NULL;
 						#ifdef DEBUG
