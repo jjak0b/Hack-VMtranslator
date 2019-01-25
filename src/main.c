@@ -332,21 +332,24 @@ list_node *ASM_push( list_node *output, char* filename, char *str_segment, char 
 		free( str_tmp );
 	}
 
-	if( strcmp( str_segment, "static" ) ){
+	if( strcmp( str_segment, "constant") && strcmp( str_segment, "static" ) ){
 		output = push( output, strDuplicate( "D=A" ) );
-		if( !strcmp( str_segment, "constant") ){
-			output = push( output, strDuplicate( "@0" ) );
-		}
-		else if( !strcmp( str_segment, "local") ){
+		if( !strcmp( str_segment, "local") ){
 			output = push( output, strDuplicate( "@LCL" ) );
 		}
 		else if( !strcmp( str_segment, "argument") ){
 			output = push( output, strDuplicate( "@ARG" ) );
 		}
-		output = push( output, strDuplicate( "A=A+D" ) );  	// addr = START_SEGMENT + i
+		output = push( output, strDuplicate( "A=M+D" ) );  	// addr = START_SEGMENT + i
 	}
 
-	output = push( output, strDuplicate( "D=M" ) );		// *SP = *addr
+	if( !strcmp( str_segment, "constant" ) ){
+		output = push( output, strDuplicate( "D=A" ) );
+	}
+	else{
+		output = push( output, strDuplicate( "D=M" ) );		// *SP = *addr
+	}
+	
 	output = push( output, strDuplicate( "@SP" ) );
 	output = push( output, strDuplicate( "A=M" ) );
 	output = push( output, strDuplicate( "M=D" ) );
@@ -362,7 +365,8 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	char *str_tmp = NULL;
 	// genero l'indice della variabile
 	
-	if( strcmp( str_segment, "static") ){ // @index
+	// pop constant x non è ammesso, pertanto si potranno avere risultati innaspettati
+	if( strcmp( str_segment, "static") || !strcmp(str_segment, "constant") ){ // @index
 		// addr = START_SEGMENT + i
 		output = ASM_atLabel(output, index);
 	}
@@ -386,7 +390,7 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	}
 
 	if( strcmp( str_segment, "static" ) ){
-		output = push( output, strDuplicate( "D=A+D" ) ); 
+		output = push( output, strDuplicate( "D=M+D" ) ); 
 	}
 	
 	output = push( output, strDuplicate( "@R13" ) ); // uso R13 come variabile temporanea
@@ -394,7 +398,8 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 
 	output = ASM_DecSP( output ); // SP--
 
-	output = push( output, strDuplicate( "D=M" ) );// *address = *SP
+	output = push( output, strDuplicate( "A=M" ) );// *address = *SP
+	output = push( output, strDuplicate( "D=M" ) );
 	output = push( output, strDuplicate( "@R13" ) ); 
 	output = push( output, strDuplicate( "A=M" ) );
 	output = push( output, strDuplicate( "M=D" ) );
@@ -423,6 +428,12 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
 	strcpy( str_tmp, str_filename );
 	strcat( str_tmp, ".");
 	strcat( str_tmp, str_label );
+
+	if( b_isConditional ){
+		output = ASM_DecSP( output );
+		output = push( output, strDuplicate( "A=M" ) );
+		output = push( output, strDuplicate( "D=M" ) );
+	}
 	output = ASM_atLabel( output, str_tmp );
 	free( str_tmp );
 	if( b_isConditional ){
@@ -447,10 +458,11 @@ list_node *ASM_function_declare( list_node *output, char *str_filename, char *st
 
 	// INIZIALIZZO LOCALI
 	int length_n_local_vars = strlen( str_n_local_vars );
-	str_tmp = malloc( sizeof(char) * ( length_n_local_vars + 3 ) );
-	strcpy( str_tmp, "D=");
+	str_tmp = malloc( sizeof(char) * ( length_n_local_vars + 2 ) );
+	strcpy( str_tmp, "@");
 	strcat( str_tmp, str_n_local_vars );
 	output = push( output, str_tmp);
+	output = push( output, strDuplicate("D=A") );
 
 	int length_init_loop = length_functionName + length_init_loop + strlen( str_init_loop );
 	str_tmp = malloc( sizeof(char) * ( length_init_loop + 1) );
@@ -570,7 +582,7 @@ list_node *ASM_function_call( list_node *output, char *str_filename, unsigned in
 list_node *ASM_function_return( list_node *output ){
 	// Inzializzo variabile temporanea FRAME
 	output = push( output, strDuplicate( "@LCL"));
-	output = push( output, strDuplicate( "D=A"));
+	output = push( output, strDuplicate( "D=M")); // output = push( output, strDuplicate( "D=A"));
 	output = push( output, strDuplicate( "@R13"));
 	output = push( output, strDuplicate( "M=D"));
 
@@ -586,7 +598,7 @@ list_node *ASM_function_return( list_node *output ){
 
 	// POP D
 	output = push( output, strDuplicate( "@SP"));
-	output = push( output, strDuplicate( "AM=M-1")); // CONTROLLARE
+	output = push( output, strDuplicate( "AM=M-1"));
 	output = push( output, strDuplicate( "D=M"));
 
 	// *ARG
@@ -596,7 +608,7 @@ list_node *ASM_function_return( list_node *output ){
 
 	// ripristino SP caller
 	output = push( output, strDuplicate( "@ARG"));
-	output = push( output, strDuplicate( "D=A+1"));
+	output = push( output, strDuplicate( "D=M+1"));
 	output = push( output, strDuplicate( "@SP"));
 	output = push( output, strDuplicate( "M=D"));
 
@@ -661,6 +673,8 @@ list_node *ASM_add( list_node *output ){
 
 	// push del risultato
 	output = push( output, strDuplicate( "M=D+M" ) );
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
@@ -677,6 +691,8 @@ list_node *ASM_sub( list_node *output ){
 
 	// push del risultato
 	output = push( output, strDuplicate( "M=D+M" ) );
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
@@ -687,6 +703,8 @@ list_node *ASM_neg( list_node *output ){
 
 	output = push( output, strDuplicate( "M=-M ") ); // neg
 
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
@@ -697,6 +715,8 @@ list_node *ASM_not( list_node *output ){
 
 	output = push( output, strDuplicate( "M=!M ") ); // not
 
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
@@ -713,6 +733,9 @@ list_node *ASM_and( list_node *output ){
 
 	// push del risultato
 	output = push( output, strDuplicate( "M=D&M" ) ); // and bitwise
+
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
@@ -729,6 +752,9 @@ list_node *ASM_or( list_node *output ){
 
 	// push del risultato
 	output = push( output, strDuplicate( "M=D|M" ) ); // or bitwise
+
+	// Incremento SP
+	output = ASM_IncSP(output);
 	return output;
 }
 
