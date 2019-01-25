@@ -1,7 +1,7 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
-#define DEBUG
+// #define DEBUG
 
 /*
 	Per usare meno spazio occupato da una variabile che io considero essere booleana,
