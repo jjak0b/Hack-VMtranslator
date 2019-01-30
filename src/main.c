@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-
 /*
 	Convenzioni usate:
 		b_nomevar / isNomeVar 	-> usata per variabili booleane
@@ -16,6 +13,7 @@
 #include "utility.h"
 #include "list.h"
 #include <string.h>
+#include <dirent.h>
 
 #define FILE_INPUT_EXTENSION ".vm" // estensione personalizzabile
 #ifndef FILE_INPUT_EXTENSION
@@ -266,30 +264,49 @@ list_node *ASM_push( list_node *output, char* filename, char *str_segment, char 
 	int length_str_index = strlen( index );
 	char *str_tmp = NULL;
 
-	// genero l'indice della variabile
-	if( strcmp( str_segment, "static") ){ // @index
-		// addr = START_SEGMENT + i
-		output = ASM_atLabel(output, index);
-	}
-	else{ // @filename.index
-		length_str_index = (strlen( filename ) + 1 + length_str_index );
-		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
-		strcpy( str_tmp, filename );
-		strcat( str_tmp, ".");
-		strcat( str_tmp, index );
-		output = ASM_atLabel( output, str_tmp );
-		free( str_tmp );
+	if( strcmp( str_segment, "pointer") ){
+		// genero l'indice della variabile
+		if( strcmp( str_segment, "static") ){ // @index
+			// addr = START_SEGMENT + i
+			output = ASM_atLabel(output, index);
+		}
+		else{ // @filename.index
+			length_str_index = (strlen( filename ) + 1 + length_str_index );
+			str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
+			strcpy( str_tmp, filename );
+			strcat( str_tmp, ".");
+			strcat( str_tmp, index );
+			output = ASM_atLabel( output, str_tmp );
+			free( str_tmp );
+		}
 	}
 
 	if( strcmp( str_segment, "constant") && strcmp( str_segment, "static" ) ){
-		output = push( output, strDuplicate( "D=A" ) );
+		if( strcmp( str_segment, "pointer") ){
+			output = push( output, strDuplicate( "D=A" ) );
+		}
+
 		if( !strcmp( str_segment, "local") ){
 			output = push( output, strDuplicate( "@LCL" ) );
 		}
 		else if( !strcmp( str_segment, "argument") ){
 			output = push( output, strDuplicate( "@ARG" ) );
 		}
-		output = push( output, strDuplicate( "A=M+D" ) );  	// addr = START_SEGMENT + i
+		else if( !strcmp( str_segment, "this") || ( !strcmp( str_segment, "pointer") && length_str_index == 1 && index[0] == '0' ) ){
+			output = push( output, strDuplicate( "@THIS" ) );
+		}
+		else if( !strcmp( str_segment, "that") || ( !strcmp( str_segment, "pointer") && length_str_index == 1 && index[0] == '1' ) ){
+			output = push( output, strDuplicate( "@THAT" ) );
+		}
+		else if( !strcmp( str_segment, "temp") ){
+			output = push( output, strDuplicate( "@R5" ) );
+
+			output = push( output, strDuplicate( "A=D+A" ) ); // addr = ADDRESS_START_SEGMENT + i
+		}
+		
+		if( strcmp( str_segment, "temp") && strcmp( str_segment, "pointer") ){
+			output = push( output, strDuplicate( "A=D+M" ) );  	// addr = START_SEGMENT + i
+		}
 	}
 
 	if( !strcmp( str_segment, "constant" ) ){
@@ -319,37 +336,52 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	}
 	int length_str_index = strlen( index );
 	char *str_tmp = NULL;
-	// genero l'indice della variabile
+
+	if( strcmp( str_segment, "pointer") ){
+		// genero l'indice della variabile
+		// pop constant x non è ammesso, pertanto si potranno avere risultati innaspettati
+		if( strcmp( str_segment, "static") || !strcmp(str_segment, "constant") ){ // @index
+			// addr = START_SEGMENT + i
+			output = ASM_atLabel(output, index);
+		}
+		else{ // @filename.index
+			length_str_index = (strlen( filename ) + 1 + length_str_index );
+			str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
+			strcpy( str_tmp, filename );
+			strcat( str_tmp, ".");
+			strcat( str_tmp, index );
+			output = ASM_atLabel( output, str_tmp );
+			free( str_tmp );
+		}
+		output = push( output, strDuplicate( "D=A" ) );
+	}
 	
-	// pop constant x non è ammesso, pertanto si potranno avere risultati innaspettati
-	if( strcmp( str_segment, "static") || !strcmp(str_segment, "constant") ){ // @index
-		// addr = START_SEGMENT + i
-		output = ASM_atLabel(output, index);
-	}
-	else{ // @filename.index
-		length_str_index = (strlen( filename ) + 1 + length_str_index );
-		str_tmp = malloc( sizeof( char ) * (length_str_index + 1) );
-		strcpy( str_tmp, filename );
-		strcat( str_tmp, ".");
-		strcat( str_tmp, index );
-		output = ASM_atLabel( output, str_tmp );
-		free( str_tmp );
-	}
-
-	output = push( output, strDuplicate( "D=A" ) );
-
 	if( !strcmp( str_segment, "local" ) ){
 		output = push( output, strDuplicate( "@LCL" ) );
 	}
 	else if( !strcmp( str_segment, "argument") ){
 		output = push( output, strDuplicate( "@ARG" ) );
 	}
+	else if( !strcmp( str_segment, "this") || ( !strcmp( str_segment, "pointer") && length_str_index == 1 && index[0] == '0' ) ){
+		output = push( output, strDuplicate( "@THIS" ) );
+	}
+	else if( !strcmp( str_segment, "that") || ( !strcmp( str_segment, "pointer") && length_str_index == 1 && index[0] == '1' ) ){
+		output = push( output, strDuplicate( "@THAT" ) );
+	}
+	else if( !strcmp( str_segment, "temp") ){
+		output = push( output, strDuplicate( "@R5" ) );
 
-	if( strcmp( str_segment, "static" ) ){
-		output = push( output, strDuplicate( "D=M+D" ) ); 
+		output = push( output, strDuplicate( "D=D+A" ) ); 
+	}
+
+	if( !strcmp( str_segment, "pointer") ){
+		output = push( output, strDuplicate( "D=A" ) );
+	}
+	else if( strcmp( str_segment, "static" ) ){
+		output = push( output, strDuplicate( "D=D+M" ) ); 
 	}
 	
-	output = push( output, strDuplicate( "@R13" ) ); // uso R13 come variabile temporanea
+	output = push( output, strDuplicate( "@R13" ) ); // uso R13 come variabile temporanea ( contiene l'indirizzo in cui salvare il valore dallo stack)
 	output = push( output, strDuplicate( "M=D" ) );
 
 	output = ASM_DecSP( output ); // SP--
@@ -881,7 +913,7 @@ list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_file
 list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 
 	unsigned int vr_row = 1;
-	list_node *tmp = input, *output = NULL, *instruction_words = NULL;
+	list_node *tmp = NULL, *output = NULL, *instruction_words = NULL;
 	int n_words = 0;
 	bool b_error = false;
 	char *str = NULL;
@@ -892,8 +924,9 @@ list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 		output = push(output, strDuplicate("// bootstrap") );
 		#endif
 		output = ASM_InitSP( output );
+		tmp = push( tmp, strDuplicate("call Sys.init 0") );
 	}
-
+	tmp = append( tmp, input );
 	while( !b_error && tmp != NULL ){
 		str = tmp->value;
 		#ifdef DEBUG
@@ -1025,6 +1058,7 @@ list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
 	output = setup_list_str_to_list_char( tmp );
 	delete_list( tmp, true );
 	tmp = NULL;
+	printf("Traduzione completata\n");
 
 	return output;
 }
@@ -1033,71 +1067,151 @@ int main( int nArgs, char **args ){
 
 	if( nArgs > 1 && nArgs < 3){
 		char *ptr_char = NULL; // usato temporaneamente
-		char *filename = args[1];		
-		list_node *input = NULL, *output = NULL;
-		
-		if( filename == NULL ){
-			printf("ERRORE: File input non speficato\n");
-		}
-		else{
-			if( !strEndWith( filename, FILE_INPUT_EXTENSION ) ){
-				printf("ERRORE: Estensione file non supportata\n");
-			}
-			else{
-				input = readFile( filename, input );
-				if( input == NULL ){
-					printf("ERRORE: Impossbile aprire il file '%s'\n", filename );
+
+		char *str_path = args[1];
+		int lenght_path = strlen( str_path );
+
+		char *str_filepath = NULL;
+		int length_filepath = -1;
+
+		char *str_filename = NULL;
+		int lenght_filename = -1;
+
+		char *str_filepath_out = NULL;
+		int length_filepath_out = -1;
+
+		list_node *input = NULL, *output = NULL, *tmp;
+		bool b_isFile = false;
+		bool b_error = false;
+		if( str_path != NULL ){
+			printf("Path: '%s'\n", str_path );
+			b_isFile = isFile( str_path );
+			list_node *list_filenames = NULL;
+			if( b_isFile ){
+				if( strEndWith( str_path, FILE_INPUT_EXTENSION ) ){
+					// separo nomefile e percorso dove risiede il file
+					str_filename = getFileNameFromPath( str_path, true );
+					list_filenames = push( list_filenames, str_filename );
+					int index_start_filename = -1;
+					if( isSubstr( str_path, str_filename, &index_start_filename ) && index >= 0 ){// sarà sempre true
+						str_path[ index_start_filename ] = '\0';
+					}
 				}
 				else{
-					ptr_char = (char*)input->value;
-					if( *ptr_char == '\0' ){
-						printf("ERRORE: Il file '%s' risulta vuoto\n", filename );
-					}
-					else{
-						printf("file '%s' letto con successo\n", filename);
-						
-						#ifndef DEBUG
-						printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
-						#endif
-
-						#ifdef DEBUG
-						printf("caratteri letti: %d\n", size( input, true ) );
-						list_node_print( "%c", input );
-						printf("\n");
-						#endif
-						
-						output = translator( input, filename, true ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
-						delete_list( input, true );
-						input = NULL;
-						#ifdef DEBUG
-						printf("caratteri elaborati: %d\n", size(  output, true ) );
-						list_node_print( "%c", output );
-						printf( "\n" );
-						#endif
-
-						if( output != NULL ){
-							int length_estension = strlen( FILE_OUTPUT_EXTENSION );
-							int length_filename = strlen( filename );
-							int length_FilenameOut = length_filename + length_estension; // la dimensione non è proprio ottimizzata ma sicuramente non andrà outofbound
-							char *filename_out = ( char* ) malloc(sizeof(char) * ( length_FilenameOut + 1 ) );
-							strncpy( filename_out, filename, length_FilenameOut );
-							replaceFilenameExtension( filename_out, length_filename, FILE_OUTPUT_EXTENSION );
-							printf("Scrittura dell'elaborazione su file '%s' in corso...\n", filename_out);
-							if( writeFile( filename_out, output) ){
-								printf("Scrittura sul file '%s' avvenuta con successo\n", filename_out );
-							}
-							else{
-								printf("ERRORE: Impossibile aprire o scrivere sul file '%s'\n", filename_out );
-							}
-							free( filename_out );
-						}
-						else{
-							printf("ERRORE: Impossbile completare l'operazione a causa di un errore durante l'elaborazione\n");
-						}
-					}
-					delete_list( output, true);
+					printf("ERRORE: Estensione file non supportata\n");
+					b_error = true;
 				}
 			}
+			else{
+				DIR *dir;
+				struct dirent *ent;
+				dir = opendir ( str_path );
+				if ( dir != NULL ) {
+					// Cerco i file validi e li aggiungo in lista
+					ent = readdir (dir);
+					while ( ent != NULL ) {
+						if( strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..") && strEndWith(ent->d_name, FILE_INPUT_EXTENSION) ){
+							list_filenames = push( list_filenames, strDuplicate( ent->d_name ) );
+							printf( "file aggiunto: '%s'\n", ent->d_name );
+						}
+						ent = readdir (dir);
+					}
+					closedir(dir);
+				}
+				else {
+					printf("ERRORE: Impossibile accedere alla directory '%s'\n", str_path );
+					b_error = true;
+				}
+			}
+			// Inizio a leggere i(l) file(s)
+
+			// Indico quanti caratteri dedicare al separatore di percorso nel caso non ci sia
+			int length_path_separator = 1;
+			char *str_path_separator = malloc( sizeof(char) * 2 );
+			str_path_separator[0] = FILE_PATH_SEPARATOR;
+			str_path_separator[1] = '\0';
+			if( strEndWith( str_path, str_path_separator ) ){
+				length_path_separator = 0;
+			}
+
+			// Elabora i file trovati
+			list_node *node_filename = list_filenames;
+			while( node_filename != NULL && !b_error ){
+				// Ricavo le informazioni riguardo al nome del file
+				str_filename = node_filename->value;
+				lenght_filename = strlen( str_filename );
+				// Ricavo le informazioni riguardo al percorso dove risided il file
+				length_filepath = lenght_path + lenght_filename + length_path_separator;
+				// costruisco il percorso del file con str_path + ( FILE_PATH_SEPARATOR ) + str_filename
+				str_filepath = malloc( sizeof( char ) * ( length_filepath + 1 ) );
+				strcpy( str_filepath, str_path );
+				if( length_path_separator > 0 ){
+					strcat( str_filepath, str_path_separator );
+				}
+				strcat( str_filepath, str_filename );
+				printf("Lettura file '%s' in corso...\n", str_filepath);
+				input = readFile( str_filepath, input );
+				if( input == NULL ){
+					printf("ERRORE: Impossbile aprire il file '%s'\n", str_filepath );
+				}
+				else{
+					printf("file '%s' letto con successo\n",str_filepath);
+					
+					#ifndef DEBUG
+					printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
+					#endif
+
+					#ifdef DEBUG
+					printf("caratteri letti: %d\n", size( input, true ) );
+					list_node_print( "%c", input );
+					printf("\n");
+					#endif
+					
+					tmp = translator( input, str_filename, output == NULL ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+					b_error = tmp == NULL;
+					delete_list( input, true );
+					input = NULL;
+
+					#ifdef DEBUG
+					printf("caratteri elaborati: %d\n", size(  tmp, true ) );
+					list_node_print( "%c", tmp );
+					printf( "\n" );
+					#endif
+
+					free( str_filepath );
+					str_filepath = NULL;
+					output = append( output, tmp );// collego la traduzione precedente con quella appena elaborata
+				}
+				node_filename = node_filename->next;
+			}
+
+			if( !b_error ){
+				int length_estension = strlen( FILE_OUTPUT_EXTENSION );
+				if( length_path_separator > 0 ){
+					length_filepath_out = lenght_path + length_estension;
+				}
+				else{ // il path include uno "/" finale che non è da considerare
+					length_filepath_out = lenght_path + length_estension - 1;
+				}
+				
+				str_filepath_out = malloc( sizeof( char ) * length_filepath_out + 1 );
+				strncpy( str_filepath_out, str_path, length_filepath_out - length_estension );
+				strcat( str_filepath_out, FILE_OUTPUT_EXTENSION );
+				printf("Scrittura dell'elaborazione su file '%s' in corso...\n", str_filepath_out);
+				if( writeFile( str_filepath_out, output) ){
+					printf("Scrittura sul file '%s' avvenuta con successo\n", str_filepath_out );
+				}
+				else{
+					printf("ERRORE: Impossibile aprire o scrivere sul file '%s'\n", str_filepath_out );
+				}
+				free( str_filepath_out );
+			}
+			else{
+				printf("ERRORE: Impossbile completare l'operazione a causa di un errore durante l'elaborazione\n");
+			}
+		}
+		else{
+			printf("ERRORE: File input non speficato\n");
 		}
 	}
 	else{

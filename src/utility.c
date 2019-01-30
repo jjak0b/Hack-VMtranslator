@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "list.h"
+#include <dirent.h>
+
 
 bool strEndWith( char *str, char *str_suffix){
 
@@ -601,4 +603,22 @@ char *strToLowerCase( char *str  ){
 	else{
 		return NULL;
 	}
+}
+
+/**
+ * @brief verifica se il percorso dato è di un file (altrimenti cartella)
+ * PreCondition: la funzione accede alla cartella e la chiude utilizzando funzioni di libreria dirent.h
+ * @param name 
+ * @return true 
+ * @return false 
+ */
+bool isFile(const char* str_path){
+	DIR* directory = opendir(str_path);
+
+	if(directory != NULL)
+	{
+		closedir(directory);
+		return false;
+	}
+	return true;
 }
