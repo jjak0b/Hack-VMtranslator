@@ -59,21 +59,19 @@ list_node *readFile( char *filename, list_node *l_handler ){
 
 /**
  * @brief 
- * PreCondition: I 'value' puntati dai 'list_node', devono essere convertibili a char
+ * PreCondition: format deve essere una stringa, I 'value' puntati dai 'list_node', devono essere convertibili nel formato specificato da format, dove format si intende il formato di output supportato da fprintf(...)
  * PostCondition: 	Dato il nome di un file.estensione e un list_node,
  * 					scrive gli elementi della lista in un file con il nome indicato ( se non esite, viene creato )
  * @param filename 
  * @param l_handler 
  * @return false se è impossbile aprire/scrivere il file, true altrimenti
  */
-bool writeFile( char *filename, list_node *head ){
+bool writeFile( char *filename, list_node *head, char *format ){
 	FILE *fout;
-	char *ptr_char = NULL;
     fout = fopen( filename, "w");
     if( fout != NULL){
         while( !feof( fout ) && head != NULL){
-			ptr_char = head->value;
-			fprintf( fout, "%c", *ptr_char );
+			fprintf( fout, format, head->value );
 			head = head->next;
         }
         fclose( fout );

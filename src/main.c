@@ -32,6 +32,9 @@
 #define INDEX_FUNCTION_N_ARGUMENTS 2
 #define INDEX_FUNCTION_N_LOCAL_VARIABLES INDEX_FUNCTION_N_ARGUMENTS
 
+#define ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME "PROCEDURE_CALLER"
+#define ASM_ACTIVATION_RECORD_PROCEDURE_RETURN_NAME "PROCEDURE_RESTORER"
+
 /**
  * @brief : Accumula ogni carattere fino al primo "\n" e lo converte in stringa; sostituisce '\t' con ' ',  sequenze  di ' ' lasciandone solo 1; ignora tutti i caratteri dopo '\r' o '\n', commenti "//"
  * PreCondition: La lista deve essere una lista di caratteri
@@ -175,6 +178,34 @@ list_node *setup_list_str_to_list_char( list_node *input){
 		tmp = tmp->next;
 	}
 	return output;
+}
+
+/**
+ * @brief Da una lista di stringhe ritorna una lista con  aggiunto "\r\n" a fine riga di ogni stringa
+ * PreConduition: 	la lista deve essera una lista di stringhe
+ * PostCondition: 	Alla fine di ogni stringa, aggiunge la sequenza di caratteri "\r\n";
+ * 					se una stringa è vuota invece non viene aggiunta
+ * @param input 
+ * @return list_node* 
+ */
+list_node *prepare_list_str_for_file( list_node *input){
+	list_node *tmp = input;
+	int length_str = 0;
+	char *str_tmp = NULL;
+	while( tmp != NULL ){
+		length_str = strlen( tmp->value );
+		if( length_str > 0 ){
+			str_tmp = malloc( sizeof(char) * ( length_str + 2 + 1) );
+			// aggiungo "\r\n" a fine stringa per delimitare il fine riga
+			strcpy( str_tmp, tmp->value );
+			strcat( str_tmp, "\r\n");
+			free( tmp->value );
+			tmp->value = str_tmp;
+			str_tmp = NULL;
+		}
+		tmp = tmp->next;
+	}
+	return input;
 }
 
 /**
@@ -530,9 +561,42 @@ list_node *ASM_function_call( list_node *output, char *str_filename, unsigned in
 	strcat( str_returnLabel, ".return.");
 	strcat( str_returnLabel, str_returnLabelRow );
 
+	// In R13 DEVE essere stato salvato l'indirizzo di ritorno
+	// In R14 DEVE essere stato salvato l'indirizzo della funzione chiamata
+	// In R15 DEVE essere stato salvato il numero di argomenti passati
+
 	// salvo Indirizzo ritorno
-	output = ASM_atLabel( output, str_returnLabel ); // @SimpleFunction.text.return.RETURNROW
-	output = push( output, strDuplicate( "D=A") );
+	output = ASM_atLabel( output, str_returnLabel ); // @filename.function.return.RETURNROW
+	output = push( output, strDuplicate( "D=A" ) );
+	output = push( output, strDuplicate( "@R13" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	// salvo indirizzo procedura chiamata
+	output = ASM_atLabel(output, str_functionName );
+	output = push( output, strDuplicate( "D=A" ) );
+	output = push( output, strDuplicate( "@R14" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	// salvo numero argomenti passati
+	output = ASM_atLabel( output, str_n_args );
+	output = push( output, strDuplicate( "D=A" ) );
+	output = push( output, strDuplicate( "@R15" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	
+	// PASSO CONTROLLO
+	output = ASM_atLabel(output, ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME );
+	output = push( output, strDuplicate( "0;JMP") );
+	// dichiaro indirizzo ritorno
+	output = ASM_declareLabel( output, str_returnLabel );
+	return output;
+}
+
+list_node *ASM_declare_ProcedureCaller( list_node *output ){
+	// In R13 DEVE essere stato salvato l'indirizzo di ritorno
+	// In R14 DEVE essere stato salvato l'indirizzo della funzione chiamata
+	// In R15 DEVE essere stato salvato il numero di argomenti passati
+	// salvo Indirizzo ritorno
+	output = ASM_declareLabel(output, ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME );
+	output = push( output, strDuplicate( "@R13") );
+	output = push( output, strDuplicate( "D=M") );
 	output = push( output, strDuplicate( "@SP") );
 	output = push( output, strDuplicate( "A=M") );
 	output = push( output, strDuplicate( "M=D") );
@@ -579,8 +643,8 @@ list_node *ASM_function_call( list_node *output, char *str_filename, unsigned in
 	output = ASM_IncSP( output );// //Incremento SP
 
 	// setto ARG (D=SP-(n+5))
-	output = ASM_atLabel(output, str_n_args ); // NUMERO ARGOMENTI ( ASSEGNATO DA TRADUTTORE)
-	output = push( output, strDuplicate( "D=A") );
+	output = push( output, strDuplicate( "@R15") ); // NUMERO ARGOMENTI ( ASSEGNATO DA CHIAMANTE)
+	output = push( output, strDuplicate( "D=M") );
 	output = push( output, strDuplicate( "@5") );
 	output = push( output, strDuplicate( "D=D+A") );
 	output = push( output, strDuplicate( "@SP") );
@@ -595,22 +659,23 @@ list_node *ASM_function_call( list_node *output, char *str_filename, unsigned in
 	output = push( output, strDuplicate( "M=D") );
 
 	// PASSO CONTROLLO
-	output = ASM_atLabel(output, str_functionName );
+	output = push( output, strDuplicate( "@R14") );
+	output = push( output, strDuplicate( "A=M") );
 	output = push( output, strDuplicate( "0;JMP") );
-
-	// dichiaro indirizzo ritorno
-	output = ASM_declareLabel( output, str_returnLabel );
-	return output;
+	// Fine Chiamante di procedura --> è in esecuzione la funzione
 }
 
 /**
- * @brief Traduce l'istruzione return, ripristinando l' activation record del chiamante, ponendo il valore di ritorno sullo stack e il passaggio del controllo al indirizzo di ritorno del chiamante con istruzioni assembler hack
+ * @brief Dichiara il set di istruzioni che occorrono per ripristinare l' activation record del chiamante, ponendo il valore di ritorno sullo stack e il passaggio del controllo al indirizzo di ritorno del chiamante con istruzioni assembler hack
  * PreCondition: output deve essere una lista di stringhe
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_function_return( list_node *output ){
+list_node *ASM_declare_ProcedureRestorer( list_node *output ){
+	// R13 è memorizzato il frame
+	// R14 è memorizzato l'indirizzo di ritorno
+	output = ASM_declareLabel(output, ASM_ACTIVATION_RECORD_PROCEDURE_RETURN_NAME );
 	// Inzializzo variabile temporanea FRAME
 	output = push( output, strDuplicate( "@LCL"));
 	output = push( output, strDuplicate( "D=M")); // output = push( output, strDuplicate( "D=A"));
@@ -692,6 +757,21 @@ list_node *ASM_function_return( list_node *output ){
 }
 
 /**
+ * @brief Traduce l'istruzione return, ripristinando l' activation record del chiamante, ponendo il valore di ritorno sullo stack e il passaggio del controllo al indirizzo di ritorno del chiamante con istruzioni assembler hack
+ * PreCondition: output deve essere una lista di stringhe
+ * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
+ * @param output 
+ * @return list_node* 
+ */
+list_node *ASM_function_return( list_node *output ){
+	// ripristino l'activazion record
+	output = ASM_atLabel( output, ASM_ACTIVATION_RECORD_PROCEDURE_RETURN_NAME);
+	output = push( output, strDuplicate( "0;JMP"));
+	
+	return output;
+}
+
+/**
  * @brief Traduce l'istruzione add con istruzioni assembler hack
  * PreCondition: output deve essere una lista di stringhe
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
@@ -768,14 +848,11 @@ list_node *ASM_neg( list_node *output ){
  * @return list_node* 
  */
 list_node *ASM_not( list_node *output ){
-	// decremento SP e lo punto ( consumo primo operando )
+	// consumo l'operando e metto il risulato nella sua stessa locazione
 	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
+	output = push( output, strDuplicate( "A=M-1" ) );
 	output = push( output, strDuplicate( "M=!M ") ); // not
-
-	// Incremento SP
-	output = ASM_IncSP(output);
+	// il valore in SP non è cambiato, quindi non c'è bisogno di incrementarlo
 	return output;
 }
 
@@ -912,6 +989,8 @@ list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_file
  */
 list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 
+	list_node *symbol_table = NULL;
+	
 	unsigned int vr_row = 1;
 	list_node *tmp = NULL, *output = NULL, *instruction_words = NULL;
 	int n_words = 0;
@@ -920,9 +999,17 @@ list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 	char **instruction = NULL;
 
 	if( b_bootstrap ){
+		output = ASM_atLabel( output, "BOOTSTRAP" );
+		output = push( output, strDuplicate("0;JMP" ) );
+		#ifdef DEBUG
+		output = push(output, strDuplicate("// Definizione Subroutine") );
+		#endif
+		output = ASM_declare_ProcedureCaller( output );
+		output = ASM_declare_ProcedureRestorer( output );
 		#ifdef DEBUG
 		output = push(output, strDuplicate("// bootstrap") );
 		#endif
+		output = ASM_declareLabel( output, "BOOTSTRAP" );
 		output = ASM_InitSP( output );
 		tmp = push( tmp, strDuplicate("call Sys.init 0") );
 	}
@@ -1017,12 +1104,12 @@ list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 }
 
 /**
- * @brief Data una lista di caratteri contenente istruzioni in formato "non semplice" ( non ottenuto come output di set_content_to_simple_vm_format(...) ) e il percorso del file letto,
+ * @brief Data una lista di caratteri contenente istruzioni in formato "non semplice" ( non ottenuto come output di set_content_to_simple_vm_format(...) ) e il percorso del file di output,
  * 		 traduce le istruzioni VM Hack del file in Assembler hack 
  * PreCondition: input deve essere una lista di caratteri contenente istruzioni VM hack da elaborare;
  * 				 filePathname deve essere una stringa
  * 				 impostare b_bootstrap = true se si vuole inizializzare la VR hack nel file indicato
- * PostCondition: nella lista di caratteri restituita sono allocate le istruzioni necessarie pronte per l'esecuzione (ordinate)
+ * PostCondition: nella lista di STRINGHE restituita sono allocate le istruzioni necessarie pronte per l'esecuzione (ordinate)
  * 				 N.B: la lista input != lista restituita
  * @param input 
  * @param filePathname 
@@ -1055,9 +1142,10 @@ list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
 	printf("\n");
 	#endif
 
-	output = setup_list_str_to_list_char( tmp );
-	delete_list( tmp, true );
-	tmp = NULL;
+	// output = setup_list_str_to_list_char( tmp );
+	output = prepare_list_str_for_file( tmp );
+	// delete_list( tmp, true );
+	// tmp = NULL;
 	printf("Traduzione completata\n");
 
 	return output;
@@ -1068,7 +1156,7 @@ int main( int nArgs, char **args ){
 	if( nArgs > 1 && nArgs < 3){
 		char *ptr_char = NULL; // usato temporaneamente
 
-		char *str_path = args[1];
+		char *str_path = strDuplicate( args[1] );
 		int lenght_path = strlen( str_path );
 
 		char *str_filepath = NULL;
@@ -1080,22 +1168,53 @@ int main( int nArgs, char **args ){
 		char *str_filepath_out = NULL;
 		int length_filepath_out = -1;
 
-		list_node *input = NULL, *output = NULL, *tmp;
+		char *str_tmp = NULL;
+		int length_tmp = -1;
+
+		char *str_path_separator = malloc( sizeof(char) * 2 ); // lo copio in questo modo poichè FILE_PATH_SEPARATOR può essere cambiato
+		str_path_separator[0] = FILE_PATH_SEPARATOR;
+		str_path_separator[1] = '\0';
+
+		list_node *input = NULL, *output = NULL, *tmp = NULL, *tmp2 = NULL;
 		bool b_isFile = false;
 		bool b_error = false;
+		char *ch_tmp = NULL;
+		// Indico quanti caratteri dedicare al separatore di percorso nel caso non ci sia
+		int length_path_separator = 1;
+		int length_estension = strlen( FILE_OUTPUT_EXTENSION );
+
 		if( str_path != NULL ){
 			printf("Path: '%s'\n", str_path );
 			b_isFile = isFile( str_path );
 			list_node *list_filenames = NULL;
 			if( b_isFile ){
 				if( strEndWith( str_path, FILE_INPUT_EXTENSION ) ){
-					// separo nomefile e percorso dove risiede il file
+					// separo nomefile e percorso radice dove risiede il file
 					str_filename = getFileNameFromPath( str_path, true );
 					list_filenames = push( list_filenames, str_filename );
 					int index_start_filename = -1;
 					if( isSubstr( str_path, str_filename, &index_start_filename ) && index >= 0 ){// sarà sempre true
 						str_path[ index_start_filename ] = '\0';
+						lenght_path = strlen( str_path );
 					}
+					
+					if( lenght_path == 0){
+						free( str_path );
+						lenght_path = 2;
+						str_path = malloc( sizeof(char) * ( lenght_path + 1 ) );
+						str_path[ 0 ] = '.';
+						str_path[ 1 ] = FILE_PATH_SEPARATOR;
+						str_path[ 2 ] = '\0';
+					}
+
+					// costruisco il percorso finale per l'output
+					str_filename = getFileNameFromPath( str_filename, false ); // non faccio il free perchè la stringa è salvata in list_filenames
+					lenght_filename = strlen( str_filename );
+					length_filepath_out = lenght_path + lenght_filename + length_estension;
+					str_filepath_out = malloc( sizeof( char ) * length_filepath_out + 1 );
+					strcpy( str_filepath_out, str_path );
+					strcat( str_filepath_out, str_filename );
+					strcat( str_filepath_out, FILE_OUTPUT_EXTENSION );
 				}
 				else{
 					printf("ERRORE: Estensione file non supportata\n");
@@ -1122,83 +1241,92 @@ int main( int nArgs, char **args ){
 					printf("ERRORE: Impossibile accedere alla directory '%s'\n", str_path );
 					b_error = true;
 				}
+
+				if( strEndWith( str_path, str_path_separator ) ){ // il path completo include uno "/" finale che non è da considerare
+					lenght_path -= 1 ;
+					str_path[ lenght_path ] = '\0';
+				}
+
+				// costruisco il percorso finale per l'output
+				length_filepath_out = lenght_path + length_estension;
+				str_filepath_out = malloc( sizeof( char ) * length_filepath_out + 1 );
+				strcpy( str_filepath_out, str_path );
+				strcat( str_filepath_out, FILE_OUTPUT_EXTENSION );
+
+				// (ri)aggiungo il separatore ( se è stato rimosso) per ottenere la radice del percorso ( vedere ciclo seguente )
+				str_tmp = malloc( sizeof(char) * ( lenght_path + 2 ) );
+				strcpy( str_tmp, str_path );
+				strcat( str_tmp, str_path_separator );
+				free( str_path );
+				str_path = str_tmp;
+				str_tmp = NULL;
 			}
+
 			// Inizio a leggere i(l) file(s)
-
-			// Indico quanti caratteri dedicare al separatore di percorso nel caso non ci sia
-			int length_path_separator = 1;
-			char *str_path_separator = malloc( sizeof(char) * 2 );
-			str_path_separator[0] = FILE_PATH_SEPARATOR;
-			str_path_separator[1] = '\0';
-			if( strEndWith( str_path, str_path_separator ) ){
-				length_path_separator = 0;
-			}
-
 			// Elabora i file trovati
 			list_node *node_filename = list_filenames;
 			while( node_filename != NULL && !b_error ){
 				// Ricavo le informazioni riguardo al nome del file
 				str_filename = node_filename->value;
 				lenght_filename = strlen( str_filename );
+
 				// Ricavo le informazioni riguardo al percorso dove risided il file
-				length_filepath = lenght_path + lenght_filename + length_path_separator;
-				// costruisco il percorso del file con str_path + ( FILE_PATH_SEPARATOR ) + str_filename
+				length_filepath = lenght_path + lenght_filename ;
+				// costruisco il percorso del file con str_path  + str_filename
 				str_filepath = malloc( sizeof( char ) * ( length_filepath + 1 ) );
 				strcpy( str_filepath, str_path );
-				if( length_path_separator > 0 ){
-					strcat( str_filepath, str_path_separator );
-				}
 				strcat( str_filepath, str_filename );
+
 				printf("Lettura file '%s' in corso...\n", str_filepath);
-				input = readFile( str_filepath, input );
-				if( input == NULL ){
-					printf("ERRORE: Impossbile aprire il file '%s'\n", str_filepath );
+				tmp = readFile( str_filepath, tmp );
+				if( tmp != NULL ){
+					printf("file '%s' letto con successo\n", str_filepath);
+					printf("caratteri letti: %d\n", size( tmp, true ) );
+
+					if( input != NULL ){ // Come separatore di sicurezza ( che verrà normalizzato in seguito ) che sarà aggiunto solo se input non è stato già riempito con un altro file
+						// li aggiungo il modo invertito, così evito di chiamare list_node_reverse
+						ch_tmp = malloc( sizeof(char) );
+						*ch_tmp = '\n';
+						tmp = push( tmp, ch_tmp );
+
+						ch_tmp = malloc( sizeof(char) );
+						*ch_tmp = '\r';
+						tmp = push( tmp, ch_tmp );
+					}
+
+					input = append( input, tmp ); // Unisco il contenuto di tutti i file
+					tmp = NULL;
 				}
 				else{
-					printf("file '%s' letto con successo\n",str_filepath);
-					
-					#ifndef DEBUG
-					printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
-					#endif
-
-					#ifdef DEBUG
-					printf("caratteri letti: %d\n", size( input, true ) );
-					list_node_print( "%c", input );
-					printf("\n");
-					#endif
-					
-					tmp = translator( input, str_filename, output == NULL ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
-					b_error = tmp == NULL;
-					delete_list( input, true );
-					input = NULL;
-
-					#ifdef DEBUG
-					printf("caratteri elaborati: %d\n", size(  tmp, true ) );
-					list_node_print( "%c", tmp );
-					printf( "\n" );
-					#endif
-
-					free( str_filepath );
-					str_filepath = NULL;
-					output = append( output, tmp );// collego la traduzione precedente con quella appena elaborata
+					printf("ERRORE: Impossbile aprire il file '%s'\n", str_filepath );
 				}
 				node_filename = node_filename->next;
 			}
 
+			#ifndef DEBUG
+			printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
+			#endif
+
+			#ifdef DEBUG
+			printf("caratteri letti: %d\n", size( input, true ) );
+			list_node_print( "%c", input );
+			printf("\n");
+			#endif
+			
+			output = translator( input, str_filepath_out, true ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+			b_error = output == NULL;
+			delete_list( input, true );
+			input = NULL;
+
+			#ifdef DEBUG
+			printf("Righe elaborati: %d\n", size(  output, true ) );
+			list_node_print( "%s", output );
+			printf( "\n" );
+			#endif
+
 			if( !b_error ){
-				int length_estension = strlen( FILE_OUTPUT_EXTENSION );
-				if( length_path_separator > 0 ){
-					length_filepath_out = lenght_path + length_estension;
-				}
-				else{ // il path include uno "/" finale che non è da considerare
-					length_filepath_out = lenght_path + length_estension - 1;
-				}
-				
-				str_filepath_out = malloc( sizeof( char ) * length_filepath_out + 1 );
-				strncpy( str_filepath_out, str_path, length_filepath_out - length_estension );
-				strcat( str_filepath_out, FILE_OUTPUT_EXTENSION );
 				printf("Scrittura dell'elaborazione su file '%s' in corso...\n", str_filepath_out);
-				if( writeFile( str_filepath_out, output) ){
+				if( writeFile( str_filepath_out, output, "%s") ){
 					printf("Scrittura sul file '%s' avvenuta con successo\n", str_filepath_out );
 				}
 				else{
