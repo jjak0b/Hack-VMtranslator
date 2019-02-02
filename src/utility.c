@@ -583,7 +583,7 @@ char *strToUpperCase( char *str ){
 	if( length > 0 ){
 		char *str_upperCase = malloc( sizeof( char) * ( length + 1 ) );
 		for( int i = 0; i < length; i+=1 ){
-			if( str[i] >= 'a' || str[i] <= 'z' ){
+			if( str[i] >= 'a' && str[i] <= 'z' ){
 				str_upperCase[i] = str[i] - 32; // 32 è valore ashii di differenza tra lettere aschii, ad esempio tra'A' e 'a'
 			}
 			else{
