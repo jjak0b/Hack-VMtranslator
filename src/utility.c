@@ -26,7 +26,7 @@ bool strEndWith( char *str, char *str_suffix){
  * @brief
  * PreCondition: 	N/A
  * PostCondition: 	dato il nome di un file.estensione come e un list_node,
- * 					inserisce nella coda i caratteri letti dal file specificato
+ * 					inserisce nella lista i caratteri letti dal file specificato come stinghe. "\n" delemita il fine riga
  * @param *filename 
  * @param *list_node
  * @return NULL se è impossbile aprire il file
@@ -35,18 +35,40 @@ list_node *readFile( char *filename, list_node *l_handler ){
     FILE *fin;
     char c = '\0';
 	char *ptr_char = NULL;
+	list_node *buffer = NULL;
     fin = fopen( filename, "r");
     if( fin != NULL){
         while( !feof( fin ) ){
 			if( fscanf( fin, "%c", &c) == 1 ){
 				#ifdef DEBUG
 				// printf("letto: '%c' -> ASCII: %d\n", c, (int)c);
-				#endif				
+				#endif
 				ptr_char = (char*)malloc( sizeof(char) );
 				*ptr_char = c;
-				l_handler = push( l_handler, ptr_char );
+				buffer = push( buffer, ptr_char );
+				if( *ptr_char == '\n' ){
+					buffer = list_node_reverse( buffer );
+					l_handler = push( l_handler, list_to_string( buffer, NULL ) );
+					free( buffer );
+					buffer = NULL;
+				}
 			}
         }
+		if( *ptr_char != '\n' && size( buffer, true ) > 0 ){ // nell'ultimo carattere non c'è una nuova riga, quindi aggiungo  il delimitatore per normalizzare
+			ptr_char = (char*)malloc( sizeof(char) );
+			*ptr_char = '\r';
+			buffer = push( buffer, ptr_char );
+
+			ptr_char = (char*)malloc( sizeof(char) );
+			*ptr_char = '\n';
+			buffer = push( buffer, ptr_char );
+
+			buffer = list_node_reverse( buffer );
+			l_handler = push( l_handler, list_to_string( buffer, NULL ) );
+
+			free( buffer );
+			buffer = NULL;
+		}
         fclose( fin );
 		l_handler = list_node_reverse( l_handler );
     }

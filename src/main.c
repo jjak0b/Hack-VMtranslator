@@ -44,107 +44,96 @@
 list_node *set_content_to_simple_vm_format( list_node *input ){
 	list_node *tmp = input;
 	list_node *output = NULL;
-	list_node *buffer = NULL;
 	int unsigned row = 1;
 	char *str_buffer = NULL;
 	int tmp_index = -1;
 	bool b_error = false;
 	char *ptr_value = NULL;
+
 	while( !b_error && tmp != NULL ){
-		ptr_value = tmp->value;
-		if( *ptr_value == '\n' || tmp->next == NULL ){
-			if( tmp->next == NULL ){ // caso in cui non ci sia un carattere di nuova riga
-				buffer = push( buffer, tmp->value );
+		tmp_index = -1;
+		str_buffer = strDuplicate( tmp->value );
+		int length_str = strlen( str_buffer );
+		// printf( "Size:%d , str[0]=%d ,MYSTRING: %s\n", strlen( str_buffer ), str_buffer[0], str_buffer );
+		if( str_buffer[0] != '\0' ){
+			if( isSubstr( str_buffer, "//", &tmp_index ) && tmp_index >= 0 ){ // ignoro il contenuto dopo "//"
+				str_buffer[ tmp_index ] = '\0';
+				tmp_index = -1;
 			}
-			tmp_index = -1;
-			buffer = list_node_reverse( buffer );
-			str_buffer = list_to_string( buffer, NULL );
-			int length_str = strlen( str_buffer );
-			// printf( "Size:%d , str[0]=%d ,MYSTRING: %s\n", strlen( str_buffer ), str_buffer[0], str_buffer );
-			if( str_buffer[0] != '\0' ){
-				if( isSubstr( str_buffer, "//", &tmp_index ) && tmp_index >= 0 ){ // ignoro il contenuto dopo "//"
-					str_buffer[ tmp_index ] = '\0';
-					tmp_index = -1;
-				}
 
-				if( isSubstr( str_buffer, "\r", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\r" dato che sarebbe il delimitatore di riga
-					str_buffer[ tmp_index ] = '\0';
-					tmp_index = -1;
-				}
-				else if( isSubstr( str_buffer, "\n", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\n" ( se non era presente prima "\r") dato che sarebbe il delimitatore di riga
-					str_buffer[ tmp_index ] = '\0';
-					tmp_index = -1;
-				}
+			if( isSubstr( str_buffer, "\r", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\r" dato che sarebbe il delimitatore di riga
+				str_buffer[ tmp_index ] = '\0';
+				tmp_index = -1;
+			}
+			else if( isSubstr( str_buffer, "\n", &tmp_index ) && tmp_index >= 0){ // ignoro il contenuto dopo "\n" ( se non era presente prima "\r") dato che sarebbe il delimitatore di riga
+				str_buffer[ tmp_index ] = '\0';
+				tmp_index = -1;
+			}
 
-				if( str_buffer[0] != '\0' ){ // se il commento era ad inizio riga, ignora totalmente quest'ultima
-					if( isSubstr( str_buffer, "/", &tmp_index ) && tmp_index >= 0 ){ // errore di sintassi per commento non valido dopo che ho ignorato i commenti validi
-						printf( "ERRORE: Sintassi commento non valida a riga: %d, carattere: %d\n\"%s\"\n", row, tmp_index, str_buffer );
-						b_error = true;
+			if( str_buffer[0] != '\0' ){ // se il commento era ad inizio riga, ignora totalmente quest'ultima
+				if( isSubstr( str_buffer, "/", &tmp_index ) && tmp_index >= 0 ){ // errore di sintassi per commento non valido dopo che ho ignorato i commenti validi
+					printf( "ERRORE: Sintassi commento non valida a riga: %d, carattere: %d\n\"%s\"\n", row, tmp_index, str_buffer );
+					b_error = true;
+					tmp_index = -1;
+				}
+				if( !b_error ){
+					int start_index = 0, end_index = 0;
+					while( isSubstr( str_buffer, "\t", &tmp_index ) && tmp_index >= 0){ // Sostituisco tutte le tabulazioni con degli spazi
+						str_buffer[ tmp_index ] = ' ';
 						tmp_index = -1;
 					}
-					if( !b_error ){
-						int start_index = 0, end_index = 0;
-						while( isSubstr( str_buffer, "\t", &tmp_index ) && tmp_index >= 0){ // Sostituisco tutte le tabulazioni con degli spazi
-							str_buffer[ tmp_index ] = ' ';
-							tmp_index = -1;
-						}
-						while( isSubstr( str_buffer, "  ", &tmp_index ) && tmp_index >= 0 ){ // Sostituisco le doppie spaziature con una singola
-							strcpy( str_buffer + tmp_index + 1,  str_buffer + tmp_index + 2 );
-							tmp_index = -1;
-						}
-						// ignora gli spazi prima del contenuto significativo, e ne memorizzo l'indice di partenza della stringa
-						int length_str_tmp = getStrLimitIndexes( str_buffer, ' ', &start_index, &end_index );
-						// printf( "start valid %d \t end valid: %d\n", start_index, end_index );
-						if( length_str != length_str_tmp ){
-							// Mi creo una stringa con i caratteri essenziali, senza la parte meno significativa
-							char *str_tmp = malloc( sizeof( char ) * (length_str_tmp + 1 ) );
-							strncpy( str_tmp, str_buffer + start_index, length_str_tmp );
-							str_tmp[ length_str_tmp ] = '\0';
-							free( str_buffer );
-							str_buffer = str_tmp;
-						}
+					while( isSubstr( str_buffer, "  ", &tmp_index ) && tmp_index >= 0 ){ // Sostituisco le doppie spaziature con una singola
+						strcpy( str_buffer + tmp_index + 1,  str_buffer + tmp_index + 2 );
+						tmp_index = -1;
 					}
-					if( str_buffer[0] != '\0' ){
-						#ifdef DEBUG
-						printf( "RIGA %d Elaborata: \"%s\"\n", row, str_buffer);
-						#endif
-						output = push( output, str_buffer );
+					// ignora gli spazi prima del contenuto significativo, e ne memorizzo l'indice di partenza della stringa
+					int length_str_tmp = getStrLimitIndexes( str_buffer, ' ', &start_index, &end_index );
+					// printf( "start valid %d \t end valid: %d\n", start_index, end_index );
+					if( length_str != length_str_tmp ){
+						// Mi creo una stringa con i caratteri essenziali, senza la parte meno significativa
+						char *str_tmp = malloc( sizeof( char ) * (length_str_tmp + 1 ) );
+						strncpy( str_tmp, str_buffer + start_index, length_str_tmp );
+						str_tmp[ length_str_tmp ] = '\0';
+						free( str_buffer );
+						str_buffer = str_tmp;
 					}
+				}
+				if( str_buffer[0] != '\0' ){
 					#ifdef DEBUG
-					else{
-						printf( "RIGA %d elaborata e ignorata: \"", row);
-						list_node_print( "%c", buffer );
-						printf( "\"\n" );
-					}
+					printf( "RIGA %d normalizzata: \"%s\"\n", row, str_buffer);
 					#endif
+					output = push( output, str_buffer );
 				}
 				#ifdef DEBUG
 				else{
-					printf( "RIGA %d ignorata: ", row);
-					list_node_print( "%c", buffer );
-					printf( "\n");
+					printf( "RIGA %d normalizzata e ignorata: \"", tmp->value );
 				}
 				#endif
 			}
-			if( str_buffer[0] == '\0' ){
-				free( str_buffer);
-				str_buffer = NULL;
+			#ifdef DEBUG
+			else{
+				printf( "RIGA %d ignorata : %s", row, tmp->value );
 			}
-			row +=1;
-			delete_list( buffer, false );
-			buffer = NULL;
+			#endif
 		}
-		else{
-			buffer = push( buffer, tmp->value );
+		if( str_buffer[0] == '\0' ){
+			free( str_buffer);
+			str_buffer = NULL;
 		}
+		row +=1;
 		tmp = tmp->next;
 	}
 
+	
 	if( b_error ){
 		delete_list( output, true ); // libera la memoria usata
 		return NULL;
 	}
-	return list_node_reverse( output );
+	
+	else{
+		output = list_node_reverse( output );
+	}
+	return output;
 }
 
 /**
@@ -185,6 +174,7 @@ list_node *setup_list_str_to_list_char( list_node *input){
  * PreConduition: 	la lista deve essera una lista di stringhe
  * PostCondition: 	Alla fine di ogni stringa, aggiunge la sequenza di caratteri "\r\n";
  * 					se una stringa è vuota invece non viene aggiunta
+ * 					N.B: no viene istanziata una nuova lista, ma i valori che erano presenti nella lista passata sono deallocati e sostituiti con le nuove stringhe estese
  * @param input 
  * @return list_node* 
  */
@@ -977,17 +967,17 @@ list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_file
 }
 
 /**
- * @brief Data una liste di stringhe contenente stringhe di istruzioni in formato "semlice" ( ottenuta come output di set_content_to_simple_vm_format(...) )e il nome del file letto,
+ * @brief Data una liste di stringhe contenente stringhe di istruzioni in formato "semplice" ( ottenuta come output di set_content_to_simple_vm_format(...) ) e il nome del file letto,
  * 		  traduce le istruzioni VM Hack del file in Assembler hack 
  * PreCondition: input deve essere una lista di stringhe ottenuta in output dala funzione set_content_to_simple_vm_format(...) ;
- * 				 impostare b_bootstrap = true se si vuole inizializzare la VR hack nel file indicato
+ * 				 impostare b_init = true se si vuole inizializzare la VR hack nel file indicato con la chiamata a Sys.init
  * PostCondition: in output sono allocate ed aggiunte le istruzioni necessarie pronte per l'esecuzione (ordinate)
  * @param input 
  * @param filename 
- * @param b_bootstrap 
+ * @param b_init 
  * @return list_node* 
  */
-list_node *translate( list_node *input, char *filename, bool b_bootstrap){
+list_node *translate( list_node *input, char *filename, bool b_init ){
 
 	list_node *symbol_table = NULL;
 	
@@ -998,19 +988,20 @@ list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 	char *str = NULL;
 	char **instruction = NULL;
 
-	if( b_bootstrap ){
-		output = ASM_atLabel( output, "BOOTSTRAP" );
-		output = push( output, strDuplicate("0;JMP" ) );
-		#ifdef DEBUG
-		output = push(output, strDuplicate("// Definizione Subroutine") );
-		#endif
-		output = ASM_declare_ProcedureCaller( output );
-		output = ASM_declare_ProcedureRestorer( output );
-		#ifdef DEBUG
-		output = push(output, strDuplicate("// bootstrap") );
-		#endif
-		output = ASM_declareLabel( output, "BOOTSTRAP" );
-		output = ASM_InitSP( output );
+	output = ASM_atLabel( output, "BOOTSTRAP" );
+	output = push( output, strDuplicate("0;JMP" ) );
+	#ifdef DEBUG
+	output = push(output, strDuplicate("// Definizione Subroutine") );
+	#endif
+	output = ASM_declare_ProcedureCaller( output );
+	output = ASM_declare_ProcedureRestorer( output );
+	#ifdef DEBUG
+	output = push(output, strDuplicate("// bootstrap") );
+	#endif
+	output = ASM_declareLabel( output, "BOOTSTRAP" );
+	output = ASM_InitSP( output );
+
+	if( b_init ){
 		tmp = push( tmp, strDuplicate("call Sys.init 0") );
 	}
 	tmp = append( tmp, input );
@@ -1104,19 +1095,19 @@ list_node *translate( list_node *input, char *filename, bool b_bootstrap){
 }
 
 /**
- * @brief Data una lista di caratteri contenente istruzioni in formato "non semplice" ( non ottenuto come output di set_content_to_simple_vm_format(...) ) e il percorso del file di output,
+ * @brief Data una lista di stringhe contenente istruzioni in formato "non semplice" ( non ottenuto come output di set_content_to_simple_vm_format(...) ) e il percorso del file di output,
  * 		 traduce le istruzioni VM Hack del file in Assembler hack 
- * PreCondition: input deve essere una lista di caratteri contenente istruzioni VM hack da elaborare;
+ * PreCondition: input deve essere una lista di stringhe contenente istruzioni VM hack da elaborare;
  * 				 filePathname deve essere una stringa
- * 				 impostare b_bootstrap = true se si vuole inizializzare la VR hack nel file indicato
- * PostCondition: nella lista di STRINGHE restituita sono allocate le istruzioni necessarie pronte per l'esecuzione (ordinate)
+ * 				 impostare b_init = true se si vuole inizializzare la VR hack nel file indicato
+ * PostCondition: nella lista di STRINGHE restituita sono allocate le istruzioni necessarie pronte per l'esecuzione e scrittura su file (ordinate)
  * 				 N.B: la lista input != lista restituita
  * @param input 
  * @param filePathname 
- * @param b_bootstrap 
+ * @param b_init
  * @return list_node* 
  */
-list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
+list_node *translator( list_node *input, char *filePathname, bool b_init ){
 	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
 	char *filename = getFileNameFromPath( filePathname, false );
 	
@@ -1133,19 +1124,12 @@ list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
 	
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
-	tmp = translate( instructions, filename, b_bootstrap );
+	tmp = translate( instructions, filename, b_init );
 	delete_list( instructions, true );
 	instructions = NULL;
-	
-	#ifdef DEBUG
-	printf("Conversione lista stringhe a lista caratteri in corso...\n");
-	printf("\n");
-	#endif
 
-	// output = setup_list_str_to_list_char( tmp );
+	printf("Preparazione elaborato per la scrittura su file...\n");
 	output = prepare_list_str_for_file( tmp );
-	// delete_list( tmp, true );
-	// tmp = NULL;
 	printf("Traduzione completata\n");
 
 	return output;
@@ -1154,8 +1138,6 @@ list_node *translator( list_node *input, char *filePathname, bool b_bootstrap ){
 int main( int nArgs, char **args ){
 
 	if( nArgs > 1 && nArgs < 3){
-		char *ptr_char = NULL; // usato temporaneamente
-
 		char *str_path = strDuplicate( args[1] );
 		int lenght_path = strlen( str_path );
 
@@ -1178,13 +1160,13 @@ int main( int nArgs, char **args ){
 		list_node *input = NULL, *output = NULL, *tmp = NULL, *tmp2 = NULL;
 		bool b_isFile = false;
 		bool b_error = false;
-		char *ch_tmp = NULL;
+
 		// Indico quanti caratteri dedicare al separatore di percorso nel caso non ci sia
 		int length_path_separator = 1;
 		int length_estension = strlen( FILE_OUTPUT_EXTENSION );
 
 		if( str_path != NULL ){
-			printf("Path: '%s'\n", str_path );
+			printf("Percorso specificato: '%s'\n", str_path );
 			b_isFile = isFile( str_path );
 			list_node *list_filenames = NULL;
 			if( b_isFile ){
@@ -1231,7 +1213,7 @@ int main( int nArgs, char **args ){
 					while ( ent != NULL ) {
 						if( strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..") && strEndWith(ent->d_name, FILE_INPUT_EXTENSION) ){
 							list_filenames = push( list_filenames, strDuplicate( ent->d_name ) );
-							printf( "file aggiunto: '%s'\n", ent->d_name );
+							printf( "file individuato: '%s'\n", ent->d_name );
 						}
 						ent = readdir (dir);
 					}
@@ -1281,17 +1263,11 @@ int main( int nArgs, char **args ){
 				tmp = readFile( str_filepath, tmp );
 				if( tmp != NULL ){
 					printf("file '%s' letto con successo\n", str_filepath);
-					printf("caratteri letti: %d\n", size( tmp, true ) );
+					printf("Righe lette: %d\n", size( tmp, true ) );
 
 					if( input != NULL ){ // Come separatore di sicurezza ( che verrà normalizzato in seguito ) che sarà aggiunto solo se input non è stato già riempito con un altro file
-						// li aggiungo il modo invertito, così evito di chiamare list_node_reverse
-						ch_tmp = malloc( sizeof(char) );
-						*ch_tmp = '\n';
-						tmp = push( tmp, ch_tmp );
-
-						ch_tmp = malloc( sizeof(char) );
-						*ch_tmp = '\r';
-						tmp = push( tmp, ch_tmp );
+						str_tmp = strDuplicate( "\r\n");
+						tmp = push( tmp, str_tmp );
 					}
 
 					input = append( input, tmp ); // Unisco il contenuto di tutti i file
@@ -1307,19 +1283,19 @@ int main( int nArgs, char **args ){
 			printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
 			#endif
 
+			printf("Righe totali lette: %d\n", size( input, true ) );
 			#ifdef DEBUG
-			printf("caratteri letti: %d\n", size( input, true ) );
-			list_node_print( "%c", input );
+			list_node_print( "%s", input );
 			printf("\n");
 			#endif
 			
-			output = translator( input, str_filepath_out, true ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+			output = translator( input, str_filepath_out, !b_isFile ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
 			b_error = output == NULL;
 			delete_list( input, true );
 			input = NULL;
 
-			#ifdef DEBUG
-			printf("Righe elaborati: %d\n", size(  output, true ) );
+			printf("Righe totali elaborate: %d\n", size(  output, true ) );
+			#ifdef DEBUG			
 			list_node_print( "%s", output );
 			printf( "\n" );
 			#endif

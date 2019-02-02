@@ -45,7 +45,7 @@ void *replaceFilenameExtension( char *filename, int size_filename, const char *e
  * @brief
  * PreCondition: 	N/A
  * PostCondition: 	dato il nome di un file.estensione come e un list_node,
- * 					inserisce nella coda i caratteri letti dal file specificato
+ * 					inserisce nella lista i caratteri letti dal file specificato come stinghe. "\n" delemita il fine riga
  * @param *filename 
  * @param *list_node
  * @return NULL se è impossbile aprire il file
