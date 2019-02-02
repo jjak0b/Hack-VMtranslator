@@ -221,7 +221,7 @@ list_node *ASM_InitSP(list_node *output ){
  */
 list_node *ASM_IncSP( list_node *output ){
 	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "M=M+1" ) );
+	output = push( output, strDuplicate( "AM=M+1" ) );
 	return output;
 }
 
@@ -234,7 +234,7 @@ list_node *ASM_IncSP( list_node *output ){
  */
 list_node *ASM_DecSP( list_node *output ){
 	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "M=M-1" ) );
+	output = push( output, strDuplicate( "AM=M-1" ) );
 	return output;
 }
 
@@ -336,12 +336,12 @@ list_node *ASM_push( list_node *output, char* filename, char *str_segment, char 
 	else{
 		output = push( output, strDuplicate( "D=M" ) );		// *SP = *addr
 	}
-	
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "A=M" ) );
+
+	output = ASM_IncSP( output );
+	output = push( output, strDuplicate( "A=M-1" ) );
 	output = push( output, strDuplicate( "M=D" ) );
 
-	return ASM_IncSP( output ); // SP++
+	return output;
 }
 
 /**
@@ -398,7 +398,7 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 	if( !strcmp( str_segment, "pointer") ){
 		output = push( output, strDuplicate( "D=A" ) );
 	}
-	else if( strcmp( str_segment, "static" ) ){
+	else if( strcmp( str_segment, "static" ) && strcmp( str_segment, "temp" )){
 		output = push( output, strDuplicate( "D=D+M" ) ); 
 	}
 	
@@ -407,8 +407,7 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 
 	output = ASM_DecSP( output ); // SP--
 
-	output = push( output, strDuplicate( "A=M" ) );// *address = *SP
-	output = push( output, strDuplicate( "D=M" ) );
+	output = push( output, strDuplicate( "D=M" ) ); // *address = *SP
 	output = push( output, strDuplicate( "@R13" ) ); 
 	output = push( output, strDuplicate( "A=M" ) );
 	output = push( output, strDuplicate( "M=D" ) );
@@ -455,7 +454,6 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
 
 	if( b_isConditional ){
 		output = ASM_DecSP( output );
-		output = push( output, strDuplicate( "A=M" ) );
 		output = push( output, strDuplicate( "D=M" ) );
 	}
 	output = ASM_atLabel( output, str_tmp );
@@ -480,56 +478,52 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
 #define ASM_goto( output, str_filename, str_label) ( ASM_ifgoto( (output), (str_filename), (str_label), (false) ) );
 
 /**
+ * @brief Traduce una chiamata di una subroutine primitiva in istruzioni assembler hack, mettendo nel registro D l'indirizzo di ritorno
+ * PreCondition: output deve essere una lista di stringhe, per poter chiamare questa per l'istruzione str_instruction deve essere precedentemente dichiarata la subroutine con nome = strToUpperCase( str_instruction )
+ * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
+ * @param output 
+ * @return list_node* 
+ */
+list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigned int n_vr_row ){
+	// chiamata subroutine
+	char *str_instruction_Upper = strToUpperCase( str_instruction );
+	char *str_returnRow = int_to_string( n_vr_row + 1 );
+	int length_returnRow = strlen( str_returnRow );
+	int length_primitive = strlen( str_instruction );
+	int length_returnLabel = length_primitive + 8 + length_returnRow;
+	char *str_returnLabel = malloc( sizeof( char ) * ( length_returnLabel + 1 ) );
+	strcpy( str_returnLabel, str_instruction_Upper );
+	strcat( str_returnLabel, ".return." );
+	strcat( str_returnLabel, str_returnRow );
+
+	output = ASM_atLabel( output, str_returnLabel );
+	output = push( output, strDuplicate( "D=A" ));
+	output = ASM_atLabel( output, str_instruction_Upper );
+	output = push( output, strDuplicate( "0;JMP" ));
+	output = ASM_declareLabel( output, str_returnLabel );
+
+	free( str_instruction_Upper );
+	free( str_returnRow );
+	free( str_returnLabel );
+
+	return output;
+}
+
+/**
  * @brief Traduce l'istruzione function, dichiarandone le caratteristiche e l'inizializzazione delle variabili locali con istruzioni assembler hack
  * PreCondition: output deve essere una lista di stringhe, str_filename, str_functionName, str_n_local_vars devono essere stringhe;
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_function_declare( list_node *output, char *str_filename, char *str_functionName, char *str_n_local_vars ){
-	char *str_tmp = NULL;
-	char str_init_loop[] = "_INIT_LOCALS";
-	char str_init_loop_end[] = "_END";
-	int n_local_vars = atoi( str_n_local_vars );
-	int length_functionName = strlen( str_functionName );
+list_node *ASM_function_declare( list_node *output, unsigned int n_vr_row, char *str_functionName, char *str_n_local_vars ){
 	output = ASM_declareLabel( output, str_functionName);
-
-	// INIZIALIZZO LOCALI
-	int length_n_local_vars = strlen( str_n_local_vars );
-	str_tmp = malloc( sizeof(char) * ( length_n_local_vars + 2 ) );
-	strcpy( str_tmp, "@");
-	strcat( str_tmp, str_n_local_vars );
-	output = push( output, str_tmp);
-	output = push( output, strDuplicate("D=A") );
-
-	int length_init_loop = length_functionName + length_init_loop + strlen( str_init_loop );
-	str_tmp = malloc( sizeof(char) * ( length_init_loop + 1) );
-	strcpy( str_tmp, str_functionName );
-	strcat( str_tmp, str_init_loop );
-	char *str_label_init_loop = str_tmp;
-
-	int length_init_loop_end = length_init_loop + strlen( str_init_loop_end );
-	str_tmp = malloc( sizeof(char) * ( length_init_loop_end + 1 ) );
-	strcpy( str_tmp, str_label_init_loop );
-	strcat( str_tmp, str_init_loop_end );
-	char *str_label_init_loop_end = str_tmp;
-
-	output = ASM_declareLabel( output, str_label_init_loop );
-	output = ASM_atLabel( output, str_label_init_loop_end );
-	output = push( output, strDuplicate( "D;JLE") );
-	// push 0
-	output = push( output, strDuplicate( "@SP") );
-	output = push( output, strDuplicate( "A=M") );
-	output = push( output, strDuplicate( "M=0") );
-	output = ASM_IncSP( output );
-
-	output = push( output, strDuplicate( "D=D-1") );
-	output = ASM_atLabel( output, str_label_init_loop);
-	output = push( output, strDuplicate( "0;JMP") );
-	output = ASM_declareLabel( output, str_label_init_loop_end);
-
-	free( str_label_init_loop );
-	free( str_label_init_loop_end );
+	// In R14 DEVE essere stato salvato il numero di variabili locali
+	output = ASM_atLabel( output, str_n_local_vars );
+	output = push( output, strDuplicate( "D=A" ) );
+	output = push( output, strDuplicate( "@R14" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	output = ASM_primitive_call( output, "FUNCTION_INIT", n_vr_row );
 	return output;
 }
 
@@ -762,56 +756,6 @@ list_node *ASM_function_return( list_node *output ){
 }
 
 /**
- * @brief Traduce l'istruzione add con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe
- * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
- * @param output 
- * @return list_node* 
- */
-list_node *ASM_add( list_node *output ){
-	// decremento SP e lo punto ( consumo primo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	output = push( output, strDuplicate( "D=M" ) );// add
-
-	// decremento SP e lo punto ( consumo secondo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	// push del risultato
-	output = push( output, strDuplicate( "M=D+M" ) );
-	// Incremento SP
-	output = ASM_IncSP(output);
-	return output;
-}
-
-/**
- * @brief Traduce l'istruzione sub con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe
- * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
- * @param output 
- * @return list_node* 
- */
-list_node *ASM_sub( list_node *output ){
-	// decremento SP e lo punto ( consumo primo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	output = push( output, strDuplicate( "D=-M" ) ); // sub
-
-	// decremento SP e lo punto ( consumo secondo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	// push del risultato
-	output = push( output, strDuplicate( "M=D+M" ) );
-	// Incremento SP
-	output = ASM_IncSP(output);
-	return output;
-}
-
-/**
  * @brief Traduce l'istruzione neg con istruzioni assembler hack
  * PreCondition: output deve essere una lista di stringhe
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
@@ -821,12 +765,10 @@ list_node *ASM_sub( list_node *output ){
 list_node *ASM_neg( list_node *output ){
 	// decremento SP e lo punto ( consumo primo operando )
 	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
+	output = push( output, strDuplicate( "A=M-1" ) );
 
-	output = push( output, strDuplicate( "M=-M ") ); // neg
-
-	// Incremento SP
-	output = ASM_IncSP(output);
+	output = push( output, strDuplicate( "M=-M") ); // neg
+	// il valore in SP non è cambiato, quindi non c'è bisogno di incrementarlo
 	return output;
 }
 
@@ -841,107 +783,51 @@ list_node *ASM_not( list_node *output ){
 	// consumo l'operando e metto il risulato nella sua stessa locazione
 	output = push( output, strDuplicate( "@SP" ) );
 	output = push( output, strDuplicate( "A=M-1" ) );
-	output = push( output, strDuplicate( "M=!M ") ); // not
+	output = push( output, strDuplicate( "M=!M") ); // not
 	// il valore in SP non è cambiato, quindi non c'è bisogno di incrementarlo
 	return output;
 }
 
 /**
- * @brief Traduce l'istruzione and con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe
- * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
- * @param output 
- * @return list_node* 
- */
-list_node *ASM_and( list_node *output ){
-	// decremento SP e lo punto ( consumo primo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	output = push( output, strDuplicate( "D=M" ) );
-
-	// decremento SP e lo punto ( consumo secondo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	// push del risultato
-	output = push( output, strDuplicate( "M=D&M" ) ); // and bitwise
-
-	// Incremento SP
-	output = ASM_IncSP(output);
-	return output;
-}
-
-/**
- * @brief Traduce l'istruzione or con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe
- * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
- * @param output 
- * @return list_node* 
- */
-list_node *ASM_or( list_node *output ){
-	// decremento SP e lo punto ( consumo primo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	output = push( output, strDuplicate( "D=M" ) );
-
-	// decremento SP e lo punto ( consumo secondo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	// push del risultato
-	output = push( output, strDuplicate( "M=D|M" ) ); // or bitwise
-
-	// Incremento SP
-	output = ASM_IncSP(output);
-	return output;
-}
-
-/**
- * @brief Converte le istruzioni lt, gt, eq in istruzioni assembler hack
+ * @brief dichiara la subroutine primitiva delle istruzioni lt, gt, eq in istruzioni assembler hack
  * PreCondition: output deve essere una lista di stringhe;
  * 				 str_instruction deve essere una stringa e deve avere solamente uno tra i seguenti valori: ("lt", "gt", "eq") ( se nella VM sarebbero aggiunti anche "le", "ge", "ne" questa funzione li supporterà)
  * PostCondition: Aggiunge alla lista le istruzioni ASM come stringhe necessarie per l'istruzione
  * @param output 
  * @param str_instruction := tipo di istruzione di contronto valori in vm
- * @param str_filename := nome del file in cui viene chiamata l'istruzione
  * @param n_vr_row := riga del file .vm in cui è presente tale istruzione
  * @return list_node* 
  */
-list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_filename, unsigned int n_vr_row ){
+list_node *ASM_declare_primitive_compare( list_node *output, char* str_instruction ){
 	// x < y --> x-y < 0
 	// inizializzazione delle stringhe usate come label
-	int length_filename = strlen( str_filename );
-	char *str_row = int_to_string( n_vr_row );
-	int length_row = strlen( str_row );
-	char str_LABEL_PREFIX[] = "CASE_TRUE_";
-	int lenght_LABEL_PREFIX = strlen( str_LABEL_PREFIX );
-	int length_LABEL_CASE = lenght_LABEL_PREFIX + length_filename + length_row + 1;
-	char *str_LABEL_CASE = malloc( sizeof(char) * (length_LABEL_CASE + 1 ) );
-	strcpy( str_LABEL_CASE, str_LABEL_PREFIX );
-	strcat( str_LABEL_CASE, str_filename );
-	strcat( str_LABEL_CASE, "_");
-	strcat( str_LABEL_CASE, str_row );
-	int length_LABEL_CASE_END = length_LABEL_CASE + 4;
-	char *str_LABEL_CASE_END = malloc( sizeof(char) * ( length_LABEL_CASE_END + 1) );
-	strcpy( str_LABEL_CASE_END, str_LABEL_CASE );
-	strcat( str_LABEL_CASE_END, "_END");
-	char *str_ASM_jump = malloc( sizeof(char) * 6 );
 	char *str_instruction_Upper = strToUpperCase( str_instruction );
+	int lenght_instruction_Upper = strlen( str_instruction );
+	char *str_ASM_jump = malloc( sizeof(char) * ( 4 + lenght_instruction_Upper ) );
 	strcpy( str_ASM_jump, "D;J");
 	strcat( str_ASM_jump, str_instruction_Upper );
 
+	int length_LABEL_CASE = lenght_instruction_Upper + 5;
+	char *str_LABEL_CASE = malloc( sizeof(char) * (length_LABEL_CASE + 1 ) );
+	strcpy( str_LABEL_CASE, str_instruction_Upper );
+	strcat( str_LABEL_CASE, "_TRUE" );
+
+	int length_LABEL_CASE_END = lenght_instruction_Upper + 4;
+	char *str_LABEL_CASE_END = malloc( sizeof(char) * ( length_LABEL_CASE_END + 1) );
+	strcpy( str_LABEL_CASE_END, str_instruction_Upper );
+	strcat( str_LABEL_CASE_END, "_END");
+
+	output = ASM_declareLabel( output, str_instruction_Upper );
+	output = push( output, strDuplicate( "@R13" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+
+	// sub
 	// decremento SP e lo punto ( consumo primo operando )
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
-	output = push( output, strDuplicate( "D=-M" ) ); // sub
-
+	output = ASM_DecSP( output );
+	output = push( output, strDuplicate( "D=-M" ) );
 	// decremento SP e lo punto ( consumo secondo operando )
 	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "AM=M-1" ) );
-
+	output = push( output, strDuplicate( "A=M-1" ) );
 	// salvo risultato in registro D
 	output = push( output, strDuplicate( "D=D+M" ) );
 
@@ -955,17 +841,82 @@ list_node *ASM_cmp2val( list_node *output, char* str_instruction, char *str_file
 	output = push( output, strDuplicate( "D=-1" ) );
 	output = ASM_declareLabel( output, str_LABEL_CASE_END );
 	// push true (-1) o false (0) sullo stack
-	output = push( output, strDuplicate( "@SP" ) );
-	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "@SP" ) ); // salvo true o false ( da D )
+	output = push( output, strDuplicate( "A=M-1" ) );
 	output = push( output, strDuplicate( "M=D" ) );
-	output = ASM_IncSP( output );
-
+	output = push( output, strDuplicate( "@R13" ) ); // salto al'indirizzo di ritorno
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "0;JMP" ) );
 
 	free( str_LABEL_CASE );
 	free( str_LABEL_CASE_END );
 	return output;
 }
+/**
+ * @brief dichiara la subroutine primitiva delle istruzioni add, sub, and, or in istruzioni assembler hack
+ * PreCondition: output deve essere una lista di stringhe;
+ * 				 str_instruction deve essere una stringa e deve avere solamente uno tra i seguenti valori: (add, sub, and, or)
+ * PostCondition: Aggiunge alla lista le istruzioni ASM come stringhe necessarie per l'istruzione
+ * @param output 
+ * @param str_instruction := tipo di istruzione di contronto valori in vm
+ * @param n_vr_row := riga del file .vm in cui è presente tale istruzione
+ * @return list_node* 
+ */
+list_node *ASM_declare_primitive_compute( list_node *output, char* str_instruction ){
+	char *str_instruction_Upper = strToUpperCase( str_instruction );
+	output = ASM_declareLabel( output, str_instruction_Upper );
+	output = push( output, strDuplicate( "@R13" ) );
+	output = push( output, strDuplicate( "M=D" ) );
+	output = ASM_DecSP( output );
+	if( strcmp(str_instruction_Upper, "sub" ) ){
+		output = push( output, strDuplicate( "D=M" ) );
+	}
+	else{
+		output = push( output, strDuplicate( "D=-M" ) );
+	}
+	output = push( output, strDuplicate( "@SP" ) );
+	output = push( output, strDuplicate( "A=M-1" ) );
 
+	if( !strcmp(str_instruction_Upper, "sub" ) || !strcmp(str_instruction_Upper, "add" ) ){
+		output = push( output, strDuplicate( "M=D+M" ) );
+	}
+	else if( !strcmp(str_instruction_Upper, "and" ) ){
+		output = push( output, strDuplicate( "M=D&M" ) );
+	}
+	else if( !strcmp(str_instruction_Upper, "or" ) ){
+		output = push( output, strDuplicate( "M=D|M" ) );
+	}
+	output = push( output, strDuplicate( "@R13" ) );
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "0;JMP" ) );
+	free( str_instruction_Upper );
+
+	return output;
+}
+
+list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
+	output = ASM_declareLabel( output, "FUNCTION_INIT" );	
+	output = push( output, strDuplicate( "@R13" ) ); // memorizzo l'indirizzo di ritorno
+	output = push( output, strDuplicate( "M=D" ) );
+	output = push( output, strDuplicate( "@R14" ) ); // recupero il numero variabili locali
+	output = push( output, strDuplicate( "D=M" ) );
+	// INIZIALIZZO LOCALI
+	output = ASM_declareLabel( output, "INIT_LOCALS" );
+	output = ASM_atLabel( output, "INIT_LOCALS_END" );
+	output = push( output, strDuplicate( "D;JLE" ) );
+	// push 0
+	output = ASM_IncSP( output );
+	output = push( output, strDuplicate( "A=M-1" ) );
+	output = push( output, strDuplicate( "M=0" ) );
+	output = push( output, strDuplicate( "D=D-1" ) );
+
+	output = ASM_atLabel( output, "INIT_LOCALS" );
+	output = push( output, strDuplicate( "0;JMP" ) );
+	output = ASM_declareLabel( output, "INIT_LOCALS_END" );
+	output = push( output, strDuplicate( "@R13" ) );
+	output = push( output, strDuplicate( "A=M" ) );
+	output = push( output, strDuplicate( "0;JMP" ) );
+}
 /**
  * @brief Data una liste di stringhe contenente stringhe di istruzioni in formato "semplice" ( ottenuta come output di set_content_to_simple_vm_format(...) ) e il nome del file letto,
  * 		  traduce le istruzioni VM Hack del file in Assembler hack 
@@ -995,6 +946,14 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
 	#endif
 	output = ASM_declare_ProcedureCaller( output );
 	output = ASM_declare_ProcedureRestorer( output );
+	output = ASM_declare_primitive_FunctionInit( output );
+	output = ASM_declare_primitive_compute( output, "add" );
+	output = ASM_declare_primitive_compute( output, "sub" );
+	output = ASM_declare_primitive_compute( output, "and" );
+	output = ASM_declare_primitive_compute( output, "or" );
+	output = ASM_declare_primitive_compare( output, "eq" );
+	output = ASM_declare_primitive_compare( output, "gt" );
+	output = ASM_declare_primitive_compare( output, "lt" );
 	#ifdef DEBUG
 	output = push(output, strDuplicate("// bootstrap") );
 	#endif
@@ -1032,7 +991,7 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
 			output = ASM_ifgoto( output, filename, instruction[ INDEX_SEGMENT_NAME ], true);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
-			output = ASM_function_declare( output, filename, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
+			output = ASM_function_declare( output, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
 			output = ASM_function_call( output, filename, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_ARGUMENTS ]);
@@ -1041,34 +1000,24 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
 			output = ASM_function_return( output );
 		}
 		else{ // è un'operazione "primitiva"
-			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) ){
-				output = ASM_add( output );
+			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) || // chiamata a subroutine primitiva
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "sub" ) || 
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "and" ) ||
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" ) ||
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) || 
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
+				output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row );
 			}
-			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "sub" ) ){
-				output = ASM_sub( output );
-			}
-			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){ // la chiamata alla subroutine di quest operatori unari non sarebbe ottimizzata, quindi genera direttamente il codice
 				output = ASM_neg( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "not" ) ){
 				output = ASM_not( output );
 			}
-			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "and" ) ){
-				output = ASM_and( output );
-			}
-			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" ) ){
-				output = ASM_or( output );
-			}
-			else{ // operatori matematici =<>
-				if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
-					!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) || 
-					!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
-					output = ASM_cmp2val( output, instruction[ INDEX_INSTRUCTION_NAME ], filename, vr_row );
-				}
-				else{
-					printf( "ERRORE: istruzione \"%s\" non riconosciuta o supportata \n", instruction[ INDEX_INSTRUCTION_NAME ] );
-					b_error = true;
-				}
+			else{
+				printf( "ERRORE: istruzione \"%s\" non riconosciuta o supportata \n", instruction[ INDEX_INSTRUCTION_NAME ] );
+				b_error = true;
 			}
 		}
 
