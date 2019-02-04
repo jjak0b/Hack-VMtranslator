@@ -35,6 +35,7 @@
 #define ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME "PROCEDURE_CALLER"
 #define ASM_ACTIVATION_RECORD_PROCEDURE_RETURN_NAME "PROCEDURE_RESTORER"
 
+list_node *instructions_processed = NULL;
 /**
  * @brief : Accumula ogni carattere fino al primo "\n" e lo converte in stringa; sostituisce '\t' con ' ',  sequenze  di ' ' lasciandone solo 1; ignora tutti i caratteri dopo '\r' o '\n', commenti "//"
  * PreCondition: La lista deve essere una lista di caratteri
@@ -338,7 +339,7 @@ list_node *ASM_push( list_node *output, char* filename, char *str_segment, char 
 	}
 
 	output = ASM_IncSP( output );
-	output = push( output, strDuplicate( "A=M-1" ) );
+	output = push( output, strDuplicate( "A=A-1" ) );
 	output = push( output, strDuplicate( "M=D" ) );
 
 	return output;
@@ -484,7 +485,7 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigned int n_vr_row ){
+list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigned int n_vr_row, list_node *implementation ){
 	// chiamata subroutine
 	char *str_instruction_Upper = strToUpperCase( str_instruction );
 	char *str_returnRow = int_to_string( n_vr_row + 1 );
@@ -498,8 +499,13 @@ list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigne
 
 	output = ASM_atLabel( output, str_returnLabel );
 	output = push( output, strDuplicate( "D=A" ));
-	output = ASM_atLabel( output, str_instruction_Upper );
-	output = push( output, strDuplicate( "0;JMP" ));
+	if( implementation != NULL ){
+		output = append( implementation, output );
+	}
+	else{
+		output = ASM_atLabel( output, str_instruction_Upper );
+		output = push( output, strDuplicate( "0;JMP" ));	
+	}
 	output = ASM_declareLabel( output, str_returnLabel );
 
 	free( str_instruction_Upper );
@@ -523,7 +529,7 @@ list_node *ASM_function_declare( list_node *output, unsigned int n_vr_row, char 
 	output = push( output, strDuplicate( "D=A" ) );
 	output = push( output, strDuplicate( "@R14" ) );
 	output = push( output, strDuplicate( "M=D" ) );
-	output = ASM_primitive_call( output, "FUNCTION_INIT", n_vr_row );
+	output = ASM_primitive_call( output, "FUNCTION_INIT", n_vr_row, NULL );
 	return output;
 }
 
@@ -534,13 +540,22 @@ list_node *ASM_function_declare( list_node *output, unsigned int n_vr_row, char 
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_function_call( list_node *output, char *str_filename, unsigned int n_vr_row, char *str_functionName, char *str_n_args ){
+list_node *ASM_function_call( list_node *output, bool b_isAlreadyProcessed, char *str_filename, unsigned int n_vr_row, char *str_functionName, char *str_n_args ){
 	char *str_tmp = NULL;
 	int length_functionName = strlen( str_functionName );
 	int n_args = atoi( str_n_args );
+	int length_n_args = strlen( str_n_args );
 	char *str_returnLabelRow = int_to_string( n_vr_row + 1 );
 	int length_returnLabelRow = strlen( str_returnLabelRow );
 	char *str_returnLabel = malloc( sizeof(char) * ( length_functionName + length_returnLabelRow + 9 ) );
+	int length_unique_call_label = length_functionName + length_n_args + 6 ;
+	char *str_unique_call_label = malloc( sizeof( char ) * ( length_unique_call_label + 1) );
+
+	strcpy( str_unique_call_label, "CALL_" );
+	strcat( str_unique_call_label, str_functionName );
+	strcat( str_unique_call_label, "_");
+	strcat( str_unique_call_label, str_n_args );
+
 	strcpy( str_returnLabel, str_filename );
 	strcat( str_returnLabel, ".return.");
 	strcat( str_returnLabel, str_returnLabelRow );
@@ -548,26 +563,32 @@ list_node *ASM_function_call( list_node *output, char *str_filename, unsigned in
 	// In R13 DEVE essere stato salvato l'indirizzo di ritorno
 	// In R14 DEVE essere stato salvato l'indirizzo della funzione chiamata
 	// In R15 DEVE essere stato salvato il numero di argomenti passati
-
-	// salvo Indirizzo ritorno
 	output = ASM_atLabel( output, str_returnLabel ); // @filename.function.return.RETURNROW
 	output = push( output, strDuplicate( "D=A" ) );
-	output = push( output, strDuplicate( "@R13" ) );
-	output = push( output, strDuplicate( "M=D" ) );
-	// salvo indirizzo procedura chiamata
-	output = ASM_atLabel(output, str_functionName );
-	output = push( output, strDuplicate( "D=A" ) );
-	output = push( output, strDuplicate( "@R14" ) );
-	output = push( output, strDuplicate( "M=D" ) );
-	// salvo numero argomenti passati
-	output = ASM_atLabel( output, str_n_args );
-	output = push( output, strDuplicate( "D=A" ) );
-	output = push( output, strDuplicate( "@R15" ) );
-	output = push( output, strDuplicate( "M=D" ) );
-	
-	// PASSO CONTROLLO
-	output = ASM_atLabel(output, ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME );
-	output = push( output, strDuplicate( "0;JMP") );
+
+	if( b_isAlreadyProcessed ){
+		output = ASM_atLabel(output, str_unique_call_label );
+		output = push( output, strDuplicate( "0;JMP") );	
+	}
+	else{
+		output = ASM_declareLabel( output, str_unique_call_label );
+		// salvo Indirizzo ritorno
+		output = push( output, strDuplicate( "@R13" ) );
+		output = push( output, strDuplicate( "M=D" ) );
+		// salvo indirizzo procedura chiamata
+		output = ASM_atLabel(output, str_functionName );
+		output = push( output, strDuplicate( "D=A" ) );
+		output = push( output, strDuplicate( "@R14" ) );
+		output = push( output, strDuplicate( "M=D" ) );
+		// salvo numero argomenti passati
+		output = ASM_atLabel( output, str_n_args );
+		output = push( output, strDuplicate( "D=A" ) );
+		output = push( output, strDuplicate( "@R15" ) );
+		output = push( output, strDuplicate( "M=D" ) );
+		// PASSO CONTROLLO
+		output = ASM_atLabel(output, ASM_ACTIVATION_RECORD_PROCEDURE_CALL_NAME );
+		output = push( output, strDuplicate( "0;JMP") );
+	}
 	// dichiaro indirizzo ritorno
 	output = ASM_declareLabel( output, str_returnLabel );
 	return output;
@@ -868,7 +889,7 @@ list_node *ASM_declare_primitive_compute( list_node *output, char* str_instructi
 	output = push( output, strDuplicate( "@R13" ) );
 	output = push( output, strDuplicate( "M=D" ) );
 	output = ASM_DecSP( output );
-	if( strcmp(str_instruction_Upper, "sub" ) ){
+	if( strcmp(str_instruction_Upper, "SUB" ) ){
 		output = push( output, strDuplicate( "D=M" ) );
 	}
 	else{
@@ -877,13 +898,13 @@ list_node *ASM_declare_primitive_compute( list_node *output, char* str_instructi
 	output = push( output, strDuplicate( "@SP" ) );
 	output = push( output, strDuplicate( "A=M-1" ) );
 
-	if( !strcmp(str_instruction_Upper, "sub" ) || !strcmp(str_instruction_Upper, "add" ) ){
+	if( !strcmp(str_instruction_Upper, "SUB" ) || !strcmp(str_instruction_Upper, "ADD" ) ){
 		output = push( output, strDuplicate( "M=D+M" ) );
 	}
-	else if( !strcmp(str_instruction_Upper, "and" ) ){
+	else if( !strcmp(str_instruction_Upper, "AND" ) ){
 		output = push( output, strDuplicate( "M=D&M" ) );
 	}
-	else if( !strcmp(str_instruction_Upper, "or" ) ){
+	else if( !strcmp(str_instruction_Upper, "OR" ) ){
 		output = push( output, strDuplicate( "M=D|M" ) );
 	}
 	output = push( output, strDuplicate( "@R13" ) );
@@ -906,7 +927,7 @@ list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
 	output = push( output, strDuplicate( "D;JLE" ) );
 	// push 0
 	output = ASM_IncSP( output );
-	output = push( output, strDuplicate( "A=M-1" ) );
+	output = push( output, strDuplicate( "A=A-1" ) );
 	output = push( output, strDuplicate( "M=0" ) );
 	output = push( output, strDuplicate( "D=D-1" ) );
 
@@ -917,6 +938,7 @@ list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
 	output = push( output, strDuplicate( "A=M" ) );
 	output = push( output, strDuplicate( "0;JMP" ) );
 }
+
 /**
  * @brief Data una liste di stringhe contenente stringhe di istruzioni in formato "semplice" ( ottenuta come output di set_content_to_simple_vm_format(...) ) e il nome del file letto,
  * 		  traduce le istruzioni VM Hack del file in Assembler hack 
@@ -928,40 +950,55 @@ list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
  * @param b_init 
  * @return list_node* 
  */
-list_node *translate( list_node *input, char *filename, bool b_init ){
+
+bool isStrInList( char *str, list_node *list ){
+
+	bool b_isIn = false;
+	if( str != NULL && list != NULL){
+		list_node *tmp =list;
+		while( !b_isIn && tmp != NULL ){
+			if( !strcmp( str, tmp->value ) ){
+				b_isIn = true; 
+			}
+			tmp = tmp->next;
+		}
+	}
+	return b_isIn;
+}
+
+list_node *translate( list_node *input, char *str_source_filename, char* str_dest_filename, bool b_init, bool b_callInit ){
 
 	list_node *symbol_table = NULL;
 	
 	unsigned int vr_row = 1;
-	list_node *tmp = NULL, *output = NULL, *instruction_words = NULL;
+	list_node *tmp = NULL, *tmp2 = NULL, *output = NULL, *instruction_words = NULL, *implementation = NULL;
 	int n_words = 0;
 	bool b_error = false;
 	char *str = NULL;
+	bool b_processed = false, b_support_processed = false;
 	char **instruction = NULL;
 
-	output = ASM_atLabel( output, "BOOTSTRAP" );
-	output = push( output, strDuplicate("0;JMP" ) );
-	#ifdef DEBUG
-	output = push(output, strDuplicate("// Definizione Subroutine") );
-	#endif
-	output = ASM_declare_ProcedureCaller( output );
-	output = ASM_declare_ProcedureRestorer( output );
-	output = ASM_declare_primitive_FunctionInit( output );
-	output = ASM_declare_primitive_compute( output, "add" );
-	output = ASM_declare_primitive_compute( output, "sub" );
-	output = ASM_declare_primitive_compute( output, "and" );
-	output = ASM_declare_primitive_compute( output, "or" );
-	output = ASM_declare_primitive_compare( output, "eq" );
-	output = ASM_declare_primitive_compare( output, "gt" );
-	output = ASM_declare_primitive_compare( output, "lt" );
-	#ifdef DEBUG
-	output = push(output, strDuplicate("// bootstrap") );
-	#endif
-	output = ASM_declareLabel( output, "BOOTSTRAP" );
-	output = ASM_InitSP( output );
-
 	if( b_init ){
-		tmp = push( tmp, strDuplicate("call Sys.init 0") );
+		output = ASM_atLabel( output, "BOOTSTRAP" );
+		output = push( output, strDuplicate("0;JMP" ) );
+		#ifdef DEBUG
+		output = push(output, strDuplicate("// Definizione Subroutine") );
+		#endif
+
+		output = ASM_declare_ProcedureCaller( output );
+		output = ASM_declare_ProcedureRestorer( output );
+		output = ASM_declare_primitive_FunctionInit( output );
+
+		#ifdef DEBUG
+		output = push(output, strDuplicate("// bootstrap") );
+		#endif
+
+		output = ASM_declareLabel( output, "BOOTSTRAP" );
+		output = ASM_InitSP( output );
+
+		if( b_callInit ){
+			tmp = push( tmp, strDuplicate("call Sys.init 0") );
+		}
 	}
 	tmp = append( tmp, input );
 	while( !b_error && tmp != NULL ){
@@ -974,27 +1011,37 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
 		output = push( output, str_debug );
 		#endif
 		instruction_words = strWords( str, " ");
+
+		// con isStrInList(...) controllo se questa istruzione è stata già elaborata in precedenza
+		// la imposto come già elabora, e alcune funzioni (quello che lo supportano) la elaboreranno con una chiamata diretta
+
+		b_processed = false;
+
 		instruction = list_toArrayStr( instruction_words, &n_words, false );
 		if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "push" ) ){ // istruzioni per accedere a memoria
-			output = ASM_push( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+			output = ASM_push( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "pop" ) ){
-			output = ASM_pop( output, filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
+			output = ASM_pop( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "label" ) ){ // istruzioni di salto / etichette
-			output = ASM_label( output, filename, instruction[ INDEX_SEGMENT_NAME ] );
+			output = ASM_label( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "goto" ) ){ // istruzioni di salto / etichette
-			output = ASM_goto( output, filename, instruction[ INDEX_SEGMENT_NAME ] );
+			output = ASM_goto( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "if-goto" ) ){ // istruzioni di salto / etichette
-			output = ASM_ifgoto( output, filename, instruction[ INDEX_SEGMENT_NAME ], true);
+			output = ASM_ifgoto( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ], true);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
 			output = ASM_function_declare( output, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
-			output = ASM_function_call( output, filename, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_ARGUMENTS ]);
+			b_processed = isStrInList( str, instructions_processed );
+			if( !b_processed ){
+				instructions_processed = push( instructions_processed, strDuplicate(str) );
+			}
+			output = ASM_function_call( output, b_processed, str_source_filename, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_ARGUMENTS ]);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "return" ) ){
 			output = ASM_function_return( output );
@@ -1003,11 +1050,29 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
 			if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "add" ) || // chiamata a subroutine primitiva
 				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "sub" ) || 
 				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "and" ) ||
-				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" ) ||
-				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
-				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) || 
-				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
-				output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row );
+				!strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "or" )  ){
+
+				b_processed = isStrInList( instruction[ INDEX_INSTRUCTION_NAME ], instructions_processed );
+				implementation = NULL;
+				if( !b_processed ){	
+					instructions_processed = push( instructions_processed, strDuplicate( instruction[ INDEX_INSTRUCTION_NAME ] ) );
+					implementation = ASM_declare_primitive_compute( implementation, instruction[ INDEX_INSTRUCTION_NAME ] );
+				}
+				output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
+				implementation = NULL;
+			}
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
+					 !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "gt" ) || 
+					 !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "lt" ) ){
+
+					b_processed = isStrInList( instruction[ INDEX_INSTRUCTION_NAME ],  instructions_processed );
+					implementation = NULL;
+					if( !b_processed ){
+						instructions_processed = push( instructions_processed, strDuplicate( instruction[ INDEX_INSTRUCTION_NAME ] ) );
+						implementation = ASM_declare_primitive_compare( implementation, instruction[ INDEX_INSTRUCTION_NAME ] );
+					}
+					output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
+					implementation = NULL;
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){ // la chiamata alla subroutine di quest operatori unari non sarebbe ottimizzata, quindi genera direttamente il codice
 				output = ASM_neg( output );
@@ -1056,15 +1121,16 @@ list_node *translate( list_node *input, char *filename, bool b_init ){
  * @param b_init
  * @return list_node* 
  */
-list_node *translator( list_node *input, char *filePathname, bool b_init ){
+list_node *translator( list_node *input, char *str_source_filename, char *str_dest_fileName, bool b_init, bool b_callInit ){
 	list_node *output = NULL, *tmp = NULL, *instructions = NULL;
-	char *filename = getFileNameFromPath( filePathname, false );
+	char *source_filename = getFileNameFromPath( str_source_filename, false );
+	char *dest_filename = getFileNameFromPath( str_dest_fileName, false );
 	
 	printf("Rimozioni commenti e normalizzazione del contenuto in corso...\n");
 	instructions = set_content_to_simple_vm_format( input ); // normalizza il contenuto in stringhe
 
 	#ifdef DEBUG
-	printf( "FILENAME: '%s'\n", filename );
+	printf( "FILENAME: '%s'\n", str_source_filename );
 	#endif
 
 	if( instructions == NULL ){
@@ -1073,7 +1139,7 @@ list_node *translator( list_node *input, char *filePathname, bool b_init ){
 	
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
-	tmp = translate( instructions, filename, b_init );
+	tmp = translate( instructions, source_filename, dest_filename, b_init, b_callInit);
 	delete_list( instructions, true );
 	instructions = NULL;
 
@@ -1081,6 +1147,8 @@ list_node *translator( list_node *input, char *filePathname, bool b_init ){
 	output = prepare_list_str_for_file( tmp );
 	printf("Traduzione completata\n");
 
+	free( source_filename );
+	free( dest_filename );
 	return output;
 }
 
@@ -1193,6 +1261,10 @@ int main( int nArgs, char **args ){
 				str_tmp = NULL;
 			}
 
+			#ifndef DEBUG
+			printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
+			#endif
+
 			// Inizio a leggere i(l) file(s)
 			// Elabora i file trovati
 			list_node *node_filename = list_filenames;
@@ -1209,18 +1281,23 @@ int main( int nArgs, char **args ){
 				strcat( str_filepath, str_filename );
 
 				printf("Lettura file '%s' in corso...\n", str_filepath);
-				tmp = readFile( str_filepath, tmp );
-				if( tmp != NULL ){
+				input = readFile( str_filepath, input );
+				if( input != NULL ){
 					printf("file '%s' letto con successo\n", str_filepath);
-					printf("Righe lette: %d\n", size( tmp, true ) );
-
-					if( input != NULL ){ // Come separatore di sicurezza ( che verrà normalizzato in seguito ) che sarà aggiunto solo se input non è stato già riempito con un altro file
-						str_tmp = strDuplicate( "\r\n");
-						tmp = push( tmp, str_tmp );
+					printf("Righe lette: %d\n", size( input, true ) );
+					#ifdef DEBUG
+					list_node_print( "%s", input );
+					printf("\n");
+					#endif
+					
+					tmp = translator( input, str_filename, str_filepath_out, output == NULL, !b_isFile ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
+					b_error = tmp == NULL;
+					delete_list( input, true );
+					input = NULL;
+					if( !b_error ){
+						output = append( output, tmp ); // Unisco il contenuto di tutti i file
+						tmp = NULL;
 					}
-
-					input = append( input, tmp ); // Unisco il contenuto di tutti i file
-					tmp = NULL;
 				}
 				else{
 					printf("ERRORE: Impossbile aprire il file '%s'\n", str_filepath );
@@ -1228,28 +1305,16 @@ int main( int nArgs, char **args ){
 				node_filename = node_filename->next;
 			}
 
-			#ifndef DEBUG
-			printf( "Si consiglia di ricompilare decommentando prima la definizione di 'DEBUG' in utility.h se si vuole ottenere un feedback grafico delle operazioni che il traduttore sta elaborando\n" );
-			#endif
-
-			printf("Righe totali lette: %d\n", size( input, true ) );
-			#ifdef DEBUG
-			list_node_print( "%s", input );
-			printf("\n");
-			#endif
-			
-			output = translator( input, str_filepath_out, !b_isFile ); // elabora il contenuto del file, restituendo il contenuto da scrivere su file
-			b_error = output == NULL;
-			delete_list( input, true );
-			input = NULL;
-
-			printf("Righe totali elaborate: %d\n", size(  output, true ) );
-			#ifdef DEBUG			
-			list_node_print( "%s", output );
-			printf( "\n" );
-			#endif
+			delete_list( node_filename, true );
+			node_filename = NULL;
 
 			if( !b_error ){
+				printf("Righe totali elaborate: %d\n", size( output, true ) );
+				#ifdef DEBUG
+				list_node_print( "%s", output );
+				printf( "\n" );
+				#endif
+
 				printf("Scrittura dell'elaborazione su file '%s' in corso...\n", str_filepath_out);
 				if( writeFile( str_filepath_out, output, "%s") ){
 					printf("Scrittura sul file '%s' avvenuta con successo\n", str_filepath_out );
@@ -1257,11 +1322,12 @@ int main( int nArgs, char **args ){
 				else{
 					printf("ERRORE: Impossibile aprire o scrivere sul file '%s'\n", str_filepath_out );
 				}
-				free( str_filepath_out );
 			}
 			else{
 				printf("ERRORE: Impossbile completare l'operazione a causa di un errore durante l'elaborazione\n");
 			}
+			free( str_filepath_out );
+			delete_list( output, true );
 		}
 		else{
 			printf("ERRORE: File input non speficato\n");
