@@ -138,39 +138,6 @@ list_node *set_content_to_simple_vm_format( list_node *input ){
 }
 
 /**
- * @brief Da una lista di stringhe ritorna una lista contenente una COPIA dei suoi caratteri
- * PreConduition: 	la lista deve essera una lista di stringhe
- * PostCondition: 	Alla fine di ogni stringa, aggiunge la sequenza di caratteri "\r\n";
- * 					se una stringa è vuota invece non viene aggiunta
- * @param input 
- * @return list_node* 
- */
-list_node *setup_list_str_to_list_char( list_node *input){
-	list_node *tmp = input;
-	list_node *output = NULL;
-	int length_str = 0;
-	list_node *list_string = NULL;
-	char *str_tmp = NULL;
-	while( tmp != NULL ){
-		length_str = strlen( tmp->value );
-		if( length_str > 0 ){
-			str_tmp = malloc( sizeof(char) * ( length_str + 2 + 1) );
-			// aggiungo "\r\n" a fine stringa per delimitare il fine riga
-			strcpy( str_tmp, tmp->value );
-			strcat( str_tmp, "\r\n");
-			list_string = string_to_list( str_tmp );
-			// dealloco lo spazio che ho utilizzato
-			free( str_tmp );
-			str_tmp = NULL;
-			// collego la lista di caratteri alla lista di output
-			output = append( output, list_string );
-		}
-		tmp = tmp->next;
-	}
-	return output;
-}
-
-/**
  * @brief Da una lista di stringhe ritorna una lista con  aggiunto "\r\n" a fine riga di ogni stringa
  * PreConduition: 	la lista deve essera una lista di stringhe
  * PostCondition: 	Alla fine di ogni stringa, aggiunge la sequenza di caratteri "\r\n";
@@ -417,19 +384,18 @@ list_node *ASM_pop( list_node *output, char* filename, char *str_segment, char *
 }
 
 /**
- * @brief Dichiara una label con istruzioni assembler hack con la struttura "str_filename.str_label"
- * PreCondition: output deve essere una lista di stringhe, str_filename, str_label devono essere stringhe
+ * @brief Dichiara una label con istruzioni assembler hack con la struttura "str_functionName.str_label"
+ * PreCondition: output deve essere una lista di stringhe, str_functionName, str_label devono essere stringhe
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_label( list_node *output, char* str_filename, char *str_label ){
+list_node *ASM_label( list_node *output, char* str_functionName, char *str_label ){
 	char *str_tmp = NULL;
-	int length_fileName = strlen( str_filename );
+	int length_functionName = strlen( str_functionName );
 	int length_label = strlen( str_label );
-	str_tmp = malloc( sizeof( char ) * ( length_fileName + length_label + 2 ) );
-
-	strcpy( str_tmp, str_filename );
+	str_tmp = malloc( sizeof( char ) * ( length_functionName + length_label + 2 ) );
+	strcpy( str_tmp, str_functionName);
 	strcat( str_tmp, ".");
 	strcat( str_tmp, str_label );
 	output = ASM_declareLabel( output, str_tmp );
@@ -439,17 +405,17 @@ list_node *ASM_label( list_node *output, char* str_filename, char *str_label ){
 
 /**
  * @brief Traduce l'istruzione if-goto o goto con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe, str_filename, str_label devono essere stringhe;
+ * PreCondition: output deve essere una lista di stringhe, str_functionName, str_label devono essere stringhe;
  * 				 b_isConditional deve essere = true se si vuole l'istruzione di salto Condizionale, false se incondizionale
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, bool b_isConditional){
-	int length_filename = strlen( str_filename );
+list_node *ASM_ifgoto( list_node *output, char* str_functionName, char *str_label, bool b_isConditional){
+	int length_functionName = strlen( str_functionName );
 	int length_label = strlen( str_label );
-	char *str_tmp = malloc( sizeof(char) * ( length_filename + length_label + 2 ) );
-	strcpy( str_tmp, str_filename );
+	char *str_tmp = malloc( sizeof(char) * ( length_functionName + length_label + 2 ) );
+	strcpy( str_tmp, str_functionName );
 	strcat( str_tmp, ".");
 	strcat( str_tmp, str_label );
 
@@ -471,12 +437,12 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
 
 /**
  * @brief Traduce l'istruzione goto con istruzioni assembler hack
- * PreCondition: output deve essere una lista di stringhe, str_filename, str_label devono essere stringhe
+ * PreCondition: output deve essere una lista di stringhe, str_functionName, str_label devono essere stringhe
  * PostCondition: in output sono allocate ed aggiunte (con push) le istruzioni necessarie
  * @param output 
  * @return list_node* 
  */
-#define ASM_goto( output, str_filename, str_label) ( ASM_ifgoto( (output), (str_filename), (str_label), (false) ) );
+#define ASM_goto( output, str_functionName, str_label) ( ASM_ifgoto( (output), (str_functionName), (str_label), (false) ) );
 
 /**
  * @brief Traduce una chiamata di una subroutine primitiva in istruzioni assembler hack, mettendo nel registro D l'indirizzo di ritorno
@@ -485,15 +451,16 @@ list_node *ASM_ifgoto( list_node *output, char* str_filename, char *str_label, b
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigned int n_vr_row, list_node *implementation ){
+list_node *ASM_primitive_call( list_node *output, char *str_source_filename, char* str_instruction, unsigned int n_vr_row, list_node *implementation ){
 	// chiamata subroutine
 	char *str_instruction_Upper = strToUpperCase( str_instruction );
+	int length_filename = strlen( str_source_filename );
 	char *str_returnRow = int_to_string( n_vr_row + 1 );
 	int length_returnRow = strlen( str_returnRow );
 	int length_primitive = strlen( str_instruction );
-	int length_returnLabel = length_primitive + 8 + length_returnRow;
+	int length_returnLabel = length_filename + 8 + length_returnRow;
 	char *str_returnLabel = malloc( sizeof( char ) * ( length_returnLabel + 1 ) );
-	strcpy( str_returnLabel, str_instruction_Upper );
+	strcpy( str_returnLabel, str_source_filename );
 	strcat( str_returnLabel, ".return." );
 	strcat( str_returnLabel, str_returnRow );
 
@@ -522,14 +489,14 @@ list_node *ASM_primitive_call( list_node *output, char* str_instruction, unsigne
  * @param output 
  * @return list_node* 
  */
-list_node *ASM_function_declare( list_node *output, unsigned int n_vr_row, char *str_functionName, char *str_n_local_vars ){
+list_node *ASM_function_declare( list_node *output, char *str_source_filename, unsigned int n_vr_row, char *str_functionName, char *str_n_local_vars ){
 	output = ASM_declareLabel( output, str_functionName);
 	// In R14 DEVE essere stato salvato il numero di variabili locali
 	output = ASM_atLabel( output, str_n_local_vars );
 	output = push( output, strDuplicate( "D=A" ) );
 	output = push( output, strDuplicate( "@R14" ) );
 	output = push( output, strDuplicate( "M=D" ) );
-	output = ASM_primitive_call( output, "FUNCTION_INIT", n_vr_row, NULL );
+	output = ASM_primitive_call( output, str_source_filename, "FUNCTION_INIT", n_vr_row, NULL );
 	return output;
 }
 
@@ -914,7 +881,15 @@ list_node *ASM_declare_primitive_compute( list_node *output, char* str_instructi
 
 	return output;
 }
-
+/**
+ * @brief Dichiara la primitiva "FUNCTION_INIT" per inizializzare il segmento local in istruzioni assembler hack;
+ * 		  premesso che in D deve essere memorizzato l'indirizzo di ritorno di questa primitiva;
+ * 		  premesso che in R14 deve essere memorizzato il numero di locali della funzione
+ * 
+ * 
+ * @param output 
+ * @return list_node* 
+ */
 list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
 	output = ASM_declareLabel( output, "FUNCTION_INIT" );	
 	output = push( output, strDuplicate( "@R13" ) ); // memorizzo l'indirizzo di ritorno
@@ -941,7 +916,8 @@ list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
 
 /**
  * @brief Data una liste di stringhe contenente stringhe di istruzioni in formato "semplice" ( ottenuta come output di set_content_to_simple_vm_format(...) ) e il nome del file letto,
- * 		  traduce le istruzioni VM Hack del file in Assembler hack 
+ * 		  traduce le istruzioni VM Hack del file in Assembler hack;
+ * 		  Restituisce NULL se è avvenuto un errore durante l'elaborazione di qualche istruzione
  * PreCondition: input deve essere una lista di stringhe ottenuta in output dala funzione set_content_to_simple_vm_format(...) ;
  * 				 impostare b_init = true se si vuole inizializzare la VR hack nel file indicato con la chiamata a Sys.init
  * PostCondition: in output sono allocate ed aggiunte le istruzioni necessarie pronte per l'esecuzione (ordinate)
@@ -950,33 +926,20 @@ list_node *ASM_declare_primitive_FunctionInit( list_node *output ){
  * @param b_init 
  * @return list_node* 
  */
-
-bool isStrInList( char *str, list_node *list ){
-
-	bool b_isIn = false;
-	if( str != NULL && list != NULL){
-		list_node *tmp =list;
-		while( !b_isIn && tmp != NULL ){
-			if( !strcmp( str, tmp->value ) ){
-				b_isIn = true; 
-			}
-			tmp = tmp->next;
-		}
-	}
-	return b_isIn;
-}
-
 list_node *translate( list_node *input, char *str_source_filename, char* str_dest_filename, bool b_init, bool b_callInit ){
+	unsigned int vr_row = 1; // indica la riga corrispondente all'istruzione che si sta elaborando
+	list_node *tmp = NULL, // nodo della lista a cui viene assegnatao la riga dell'istruzione da elaborare
+	*output = NULL, // lista contenente il contenuto elaborato
+	*instruction_words = NULL, // lista che contiene le parole di ogni riga, utilizzando come separatore " "
+	*implementation = NULL; // lista contenente l'implementazione di una funzionalità primitiva da associare a ASM_primitive_call(...)
 
-	list_node *symbol_table = NULL;
-	
-	unsigned int vr_row = 1;
-	list_node *tmp = NULL, *tmp2 = NULL, *output = NULL, *instruction_words = NULL, *implementation = NULL;
-	int n_words = 0;
-	bool b_error = false;
-	char *str = NULL;
-	bool b_processed = false, b_support_processed = false;
-	char **instruction = NULL;
+	int n_words = 0; // numero di parole in instruction_words ( non utilizzato )
+	bool b_error = false; // indica se è avvenuto un errore, appena ha valore true, la funziona ritorna NULL
+	char *str = NULL; // puntatore relativo a tmp->value
+	bool b_processed = false; // indica se un'istruzione ( per ora associato a chiamate a funzioni con medesimi argomenti, funzionalità primitive ) è stata precedentemente elaborata
+	char **instruction = NULL; // matrice contenente le parole della lista instruction_words, per un accesso rapido
+	char *str_last_function_name = malloc( sizeof( char ) ); // contiene in nome dell'ultima funzione elaborata ( utilizzata per le label )
+	*str_last_function_name = '\0';
 
 	if( b_init ){
 		output = ASM_atLabel( output, "BOOTSTRAP" );
@@ -1025,16 +988,18 @@ list_node *translate( list_node *input, char *str_source_filename, char* str_des
 			output = ASM_pop( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ], instruction[INDEX_SEGMENT_VARIABLE] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "label" ) ){ // istruzioni di salto / etichette
-			output = ASM_label( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ] );
+			output = ASM_label( output, str_last_function_name, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "goto" ) ){ // istruzioni di salto / etichette
-			output = ASM_goto( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ] );
+			output = ASM_goto( output, str_last_function_name, instruction[ INDEX_SEGMENT_NAME ] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "if-goto" ) ){ // istruzioni di salto / etichette
-			output = ASM_ifgoto( output, str_source_filename, instruction[ INDEX_SEGMENT_NAME ], true);
+			output = ASM_ifgoto( output, str_last_function_name, instruction[ INDEX_SEGMENT_NAME ], true);
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "function" ) ){ // Istruzioni per funzioni
-			output = ASM_function_declare( output, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
+			free( str_last_function_name );
+			str_last_function_name = strDuplicate( instruction[INDEX_FUNCTION_NAME] );
+			output = ASM_function_declare( output, str_source_filename, vr_row, instruction[INDEX_FUNCTION_NAME], instruction[ INDEX_FUNCTION_N_LOCAL_VARIABLES] );
 		}
 		else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "call" ) ){
 			b_processed = isStrInList( str, instructions_processed );
@@ -1058,7 +1023,7 @@ list_node *translate( list_node *input, char *str_source_filename, char* str_des
 					instructions_processed = push( instructions_processed, strDuplicate( instruction[ INDEX_INSTRUCTION_NAME ] ) );
 					implementation = ASM_declare_primitive_compute( implementation, instruction[ INDEX_INSTRUCTION_NAME ] );
 				}
-				output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
+				output = ASM_primitive_call( output, str_source_filename, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
 				implementation = NULL;
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "eq" ) ||
@@ -1071,10 +1036,10 @@ list_node *translate( list_node *input, char *str_source_filename, char* str_des
 						instructions_processed = push( instructions_processed, strDuplicate( instruction[ INDEX_INSTRUCTION_NAME ] ) );
 						implementation = ASM_declare_primitive_compare( implementation, instruction[ INDEX_INSTRUCTION_NAME ] );
 					}
-					output = ASM_primitive_call( output, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
+					output = ASM_primitive_call( output, str_source_filename, instruction[ INDEX_INSTRUCTION_NAME ], vr_row , implementation );
 					implementation = NULL;
 			}
-			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){ // la chiamata alla subroutine di quest operatori unari non sarebbe ottimizzata, quindi genera direttamente il codice
+			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "neg" ) ){ // la chiamata alla primitiva di quest operatori unari non sarebbe ottimizzata, quindi genera direttamente il codice
 				output = ASM_neg( output );
 			}
 			else if( !strcmp( instruction[ INDEX_INSTRUCTION_NAME ], "not" ) ){
@@ -1104,13 +1069,15 @@ list_node *translate( list_node *input, char *str_source_filename, char* str_des
 		tmp = tmp->next;
 		vr_row += 1;
 	}
+	free( str_last_function_name );
 
 	return list_node_reverse( output );
 }
 
 /**
  * @brief Data una lista di stringhe contenente istruzioni in formato "non semplice" ( non ottenuto come output di set_content_to_simple_vm_format(...) ) e il percorso del file di output,
- * 		 traduce le istruzioni VM Hack del file in Assembler hack 
+ * 		 traduce le istruzioni VM Hack del file in Assembler hack;
+ * 		 Restituisce NULL se è avvenuto un errore durante l'elaborazione di qualche istruzione
  * PreCondition: input deve essere una lista di stringhe contenente istruzioni VM hack da elaborare;
  * 				 filePathname deve essere una stringa
  * 				 impostare b_init = true se si vuole inizializzare la VR hack nel file indicato
@@ -1140,6 +1107,9 @@ list_node *translator( list_node *input, char *str_source_filename, char *str_de
 	printf("Traduzione delle istruzioni VM in ASM in corso...\n");
 	// traduce
 	tmp = translate( instructions, source_filename, dest_filename, b_init, b_callInit);
+	if( tmp == NULL ){
+		return NULL;
+	}
 	delete_list( instructions, true );
 	instructions = NULL;
 
@@ -1230,7 +1200,7 @@ int main( int nArgs, char **args ){
 					while ( ent != NULL ) {
 						if( strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..") && strEndWith(ent->d_name, FILE_INPUT_EXTENSION) ){
 							list_filenames = push( list_filenames, strDuplicate( ent->d_name ) );
-							printf( "file individuato: '%s'\n", ent->d_name );
+							printf( "File individuato: '%s'\n", ent->d_name );
 						}
 						ent = readdir (dir);
 					}
@@ -1283,7 +1253,7 @@ int main( int nArgs, char **args ){
 				printf("Lettura file '%s' in corso...\n", str_filepath);
 				input = readFile( str_filepath, input );
 				if( input != NULL ){
-					printf("file '%s' letto con successo\n", str_filepath);
+					printf("File '%s' letto con successo\n", str_filepath);
 					printf("Righe lette: %d\n", size( input, true ) );
 					#ifdef DEBUG
 					list_node_print( "%s", input );
@@ -1294,7 +1264,10 @@ int main( int nArgs, char **args ){
 					b_error = tmp == NULL;
 					delete_list( input, true );
 					input = NULL;
-					if( !b_error ){
+					if( b_error ){
+						printf("ERRORE: Impossibile completare la traduzione a causa di un errore nel file '%s' \n", str_filename );
+					}
+					else{
 						output = append( output, tmp ); // Unisco il contenuto di tutti i file
 						tmp = NULL;
 					}
