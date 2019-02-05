@@ -233,6 +233,16 @@ char *strToUpperCase( char *str );
 char *strToLowerCase( char *str  );
 
 /**
+ * @brief indica se negli elementi della lista è presenta una stringa quivalente a quella indicata
+ * PreCondition: str deve essere una stringa; list deve essere una lista contenente solamente stringhe
+ * @param str 
+ * @param list 
+ * @return true se str è presente in list
+ * @return false altrimenti
+ */
+bool isStrInList( char *str, list_node *list );
+
+/**
  * @brief verifica se il percorso dato è di un file (altrimenti cartella)
  * PreCondition: la funzione accede alla cartella e la chiude utilizzando funzioni di libreria dirent.h
  * @param name 
