@@ -1162,7 +1162,7 @@ int main( int nArgs, char **args ){
 					str_filename = getFileNameFromPath( str_path, true );
 					list_filenames = push( list_filenames, str_filename );
 					int index_start_filename = -1;
-					if( isSubstr( str_path, str_filename, &index_start_filename ) && index >= 0 ){// sarà sempre true
+					if( isSubstr( str_path, str_filename, &index_start_filename ) && index_start_filename >= 0 ){// sarà sempre true
 						str_path[ index_start_filename ] = '\0';
 						lenght_path = strlen( str_path );
 					}
